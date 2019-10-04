@@ -1,19 +1,19 @@
-#include <signal.h> 
-#include <stdio.h> 
-#include <stdlib.h> 
-#include <string.h> 
-#include <sys/ipc.h> 
-#include <sys/shm.h> 
-#include <sys/types.h> 
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/mman.h>
+#include <fcntl.h>
 #include <unistd.h>
+#include <errno.h>
+#include <string.h>
+#include <semaphore.h>
+#include "shared_mem_struct.h"
 
 //Shared Memery Init
-void init_shared();
+void* create_shared_mem(char* addr);
 
-//Shared Memory Clear
-void clear_shared();
+//Shared Memory Cleanup
+void clean_up_shared_mem();
 
-//client getClient(int i);
-int getClientID();
-char* getMessage(int channel, int post);
 

@@ -14,7 +14,9 @@
 #include <unistd.h> 
 #include <ctype.h>
 #include <sys/mman.h>
+#include <signal.h>
 
+#include "shared_mem_struct.h"
 #include "shared.h"
 
 //#define MYPORT 54321    /* the port users will be connecting to */
@@ -39,6 +41,43 @@ int extractDigit(char m[]){
 	}
 }
 
+char* removeSubString(char* string, const char* sub){
+	char *match = string;
+
+	size_t len = strlen(sub);
+
+	if(len > 0){
+		char *p = string;
+		while((p = strstr(p, sub)) != NULL){
+			memmove(p, p + len, strlen(p + len) + 1);
+		}
+	} 
+
+	return string;
+}
+
+char* remove_spaces(char* s){
+	const char* d = s;
+
+	do{
+		while(*d == ' '){
+			++d;
+		}
+	} while (*s++ = *d++);
+}
+
+int SIGHANDLE(const int sig, void *ptr){
+
+	if(sig == SIGINT){
+		clean_up_shared_mem();
+		exit(0);
+	}
+
+	return (0);
+}
+
+struct memory* memptr;
+
 void server_chat(int sockfd, int c) { 
     char read_buff[MAX]; 
 	char answer_buff[MAX];
@@ -60,7 +99,7 @@ void server_chat(int sockfd, int c) {
         if (strncmp("BYE", read_buff, 3) == 0) { 
             //printf("Server Closing Client Socket...\n"); 
             break; 
-        } else if (strncmp("SUB <", read_buff, 5) == 0) { 
+        } else if (strncmp("SUB ", read_buff, 4) == 0) { 
 
 			//Passing Subbing information 
 			//-------------------------------------
@@ -77,7 +116,7 @@ void server_chat(int sockfd, int c) {
 
 		} else if (strncmp("UNSUB", read_buff, 5) == 0) { 
 			strcpy(answer_buff, "UNSUBBING!.\n");
-		} else if (strncmp("NEXT <", read_buff, 6) == 0) { 
+		} else if (strncmp("NEXT ", read_buff, 5) == 0) { 
 
 			//Passing Subbing information 
 			//-------------------------------------
@@ -97,10 +136,26 @@ void server_chat(int sockfd, int c) {
 			strcpy(answer_buff, "LIVEFEED!.\n");
 		} else if (strncmp("LIVEFEED", read_buff, 8) == 0) { 
 			strcpy(answer_buff, "LIVEFEED!.\n");
-		} else if (strncmp("NEXT", read_buff, 4) == 0) { 
-			strcpy(answer_buff, "NEXT.\n");
+		} else if (strncmp("READ", read_buff, 4) == 0) { 
+		
+			strcat(memptr->buff, "\n");
+			strcpy(answer_buff, memptr->buff);
+			strcat(answer_buff, "Dis Was Message.\n");
+
 		} else if (strncmp("SEND", read_buff, 4) == 0) { 
-			strcpy(answer_buff, "NEXT.\n");
+			
+			removeSubString(read_buff, "SEND");
+			
+			char message[25] = {"Client #"};
+			concactInt(message, c);
+			strcat(message, " :");
+
+			strcat(message, read_buff);
+		
+			strcpy(memptr->buff, message);
+			remove_spaces(message);
+			remove_spaces(message);
+			strcpy(answer_buff, "Message Sent.\n");
 		} 
 
 		write(sockfd, answer_buff, sizeof(answer_buff));
@@ -111,12 +166,14 @@ void server_chat(int sockfd, int c) {
 
 
 int main(int argc, char *argv[]){
+	
 	int sockfd, new_fd, port;  /* listen on sock_fd, new connection on new_fd */
 	struct sockaddr_in my_addr;    /* my address information */
 	struct sockaddr_in their_addr; /* connector's address information */
 	socklen_t sin_size;
 
-	//init_shared();
+	//latching to that sweet pointer
+	memptr = create_shared_mem("/temp");
 
 	/* generate the socket */
 	if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
@@ -154,6 +211,9 @@ int main(int argc, char *argv[]){
 	/* repeat: accept, send, close the connection */
 	/* for every accepted connection, use a sepetate process or thread to serve it */
 	while(1) {  /* main accept() loop */
+		
+		if(signal(SIGINT, (void(*)(int)) SIGHANDLE) == 0){}
+
 		sin_size = sizeof(struct sockaddr_in);
 		if ((new_fd = accept(sockfd, (struct sockaddr *)&their_addr, \
 		&sin_size)) == -1) {
@@ -167,15 +227,15 @@ int main(int argc, char *argv[]){
 
 		
 			char message[255] = {"Welcome! Your Client ID is <"};
-
-			concactInt(message, getpid());
+			int clientid = memptr->num_clients++;
+			concactInt(message, clientid);
 			strcat(message, ">\n");
 			size_t len = strlen(message);
 
 			if (send(new_fd, message, len, 0) == -1){ perror("send");}
 
 			//chat with the client
-			server_chat(new_fd, 1);
+			server_chat(new_fd, clientid);
 							printf("server: closing connection from %s\n", \
 			inet_ntoa(their_addr.sin_addr));
 
@@ -189,7 +249,7 @@ int main(int argc, char *argv[]){
 		while(waitpid(-1,NULL,WNOHANG) > 0); /* clean up child processes */
 	}
 
-	clear_shared();
+	clean_up_shared_mem();
 
 	return 0;		
 }
