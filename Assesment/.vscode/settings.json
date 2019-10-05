@@ -1,6 +1,7 @@
 {
     "git.ignoreLimitWarning": true,
     "files.associations": {
-        "shared_mem_struct.h": "c"
+        "shared_mem_struct.h": "c",
+        "stdio.h": "c"
     }
 }

@@ -45,9 +45,13 @@ void client_chat(int sockfd)
 	client_socket = sockfd;
     char buff[MAX]; 
     int n; 
-    for (;;) { 
-        bzero(buff, sizeof(buff)); 
-        printf("Enter the string : "); 
+
+    while (1) { 
+		
+		//if(read(sockfd, buff, sizeof(buff)) == - 1){break;}
+        
+		bzero(buff, sizeof(buff)); 
+        //printf("Enter the string : "); 
         n = 0; 
 
 		socket_info socketpass;
@@ -55,7 +59,7 @@ void client_chat(int sockfd)
 
 		if(signal(SIGINT, (void(*)(int)) SIGHANDLE) == 0){}
 
-		while ( ((buff[n++] = getchar()) != '\n'));
+		while ( ((buff[n++] = getchar()) != '\n') && (strncmp(buff, "BYE", 3)) != 0);
 
 		if ((strncmp(buff, "BYE", 3)) == 0) { 
             client_exit();
@@ -67,8 +71,14 @@ void client_chat(int sockfd)
 		
         write(sockfd, buff, sizeof(buff)); 
         bzero(buff, sizeof(buff)); 
-        read(sockfd, buff, sizeof(buff)); 
-        printf("From Server : %s", buff); 
+
+		if(read(sockfd, buff, sizeof(buff)) == -1){
+			strcpy(buff, "Lost Connection.");
+			printf("%s", buff); 
+			break;
+		}
+
+        printf("%s", buff); 
     } 
 } 
 
@@ -115,10 +125,9 @@ int main(int argc, char *argv[])
 	}
 
 	buf[numbytes] = '\0';
-	printf("Received: %s", buf);
+	printf("%s", buf);
 
 	client_chat(sockfd);
-
 
 	close(sockfd);
 

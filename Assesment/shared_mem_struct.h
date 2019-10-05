@@ -10,9 +10,16 @@ typedef struct POST_STRUCT{
 	char message[1024];
 } post;
 
+typedef struct CHANNEL_STRUCT{
+
+    post posts[255];
+    int post_index;
+    //int read_index;
+
+} channel;
 
 struct memory { 
-    char buff[255]; 
+    channel channels[255]; 
     int status; // is someone reading to or writing too? 
     int num_clients;
 }; 
