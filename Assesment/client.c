@@ -17,7 +17,7 @@
 int client_socket = 0;
 
 void client_exit(){
- 	printf("\nClient Exit...\n"); 
+ 	printf("Client Exit...\n"); 
 }
 
 
@@ -25,61 +25,56 @@ typedef struct socket_info_struct{
 	int socket_fd;
 } socket_info;
 
+volatile sig_atomic_t sig_flag = 1;
 
-int SIGHANDLE(const int sig, void *ptr){
 
-	if(sig == SIGINT){
-		client_exit();
+void sigint_handler(int sig){
 
-		char exit_message[5] = {"BYE\n"};
-		
-		write(client_socket, exit_message, sizeof(exit_message)); 
-		exit(0);
-	}
+	//if live, turn off live 
+	//if not live, sig pff
+	sig_flag = 0;
 
-	return (0);
+	//printf("pid:%d AHHH SIGINT!\n", getpid());
 }
 
 void client_chat(int sockfd) 
 { 
 	client_socket = sockfd;
     char buff[MAX]; 
-    int n; 
+    int n, lf; 
 
-    while (1) { 
+    while (sig_flag) { 
 		
-		//if(read(sockfd, buff, sizeof(buff)) == - 1){break;}
-        
 		bzero(buff, sizeof(buff)); 
-        //printf("Enter the string : "); 
         n = 0; 
 
 		socket_info socketpass;
 		socketpass.socket_fd = sockfd;
 
-		if(signal(SIGINT, (void(*)(int)) SIGHANDLE) == 0){}
-
-		while ( ((buff[n++] = getchar()) != '\n') && (strncmp(buff, "BYE", 3)) != 0);
+		while (((buff[n++] = getchar()) != '\n') != 0 && sig_flag);
 
 		if ((strncmp(buff, "BYE", 3)) == 0) { 
-            client_exit();
-			strcpy(buff, "Exit");
-			write(sockfd, buff, sizeof(buff)); 
-			bzero(buff, sizeof(buff)); 
 			break; 
-        }
+        } else if ((strncmp(buff, "LIVEFEED", 8)) == 0) { 
+			//live_flag = 1;
+		}
 		
         write(sockfd, buff, sizeof(buff)); 
         bzero(buff, sizeof(buff)); 
 
 		if(read(sockfd, buff, sizeof(buff)) == -1){
-			strcpy(buff, "Lost Connection.");
-			printf("%s", buff); 
+			printf("%s", "Lost Connection."); 
 			break;
 		}
 
-        printf("%s", buff); 
+		//From Server
+        if(sig_flag) printf("%s", buff); 
     } 
+
+	client_exit();
+	strcpy(buff, "BYE\n");
+	write(sockfd, buff, sizeof(buff)); 
+	bzero(buff, MAX);
 } 
 
 int main(int argc, char *argv[])
@@ -126,6 +121,19 @@ int main(int argc, char *argv[])
 
 	buf[numbytes] = '\0';
 	printf("%s", buf);
+
+
+	void sigint_handler(int sig); /*prototype*/
+	struct sigaction sa;
+
+	sa.sa_handler = sigint_handler;
+	sa.sa_flags = 0; // or SA_RESTART
+	sigemptyset(&sa.sa_mask);
+
+	if(sigaction(SIGINT, &sa, NULL) == -1){
+		perror("sigaction");
+		exit(1);
+	}
 
 	client_chat(sockfd);
 

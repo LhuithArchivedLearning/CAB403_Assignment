@@ -11,12 +11,12 @@
 
 #client.o
 
-SERVER_OBJ = server.o shared.o subscriber.o
+SERVER_OBJ = server.o shared.o subscriber.o helper.o
 CLIENT_OBJ = client.o
 
 CC_FLAGS=-std=c99 -lrt -pthread#-Wall -Werror -g #-I../ZDK 
 LD_FLAGS=
-LIB_SRC = server.c client.c shared.c subscriber.c
+LIB_SRC = server.c client.c shared.c subscriber.c helper.c
 
 all: server client
 

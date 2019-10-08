@@ -1,3 +1,6 @@
+#ifndef SHARED_H
+#define SHARED_H
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/types.h>
@@ -16,4 +19,4 @@ void* create_shared_mem(char* addr);
 //Shared Memory Cleanup
 void clean_up_shared_mem();
 
-
+#endif

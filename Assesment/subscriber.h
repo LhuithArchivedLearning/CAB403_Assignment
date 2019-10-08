@@ -1,3 +1,6 @@
+#ifndef SUBBED_H
+#define SUBBED_H
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/types.h>
@@ -17,3 +20,6 @@ subbed_channel* remove_sub(subbed_channel* head, subbed_channel* sub);
 void sub_dispose(subbed_channel* head);
 subbed_channel* search_remove(subbed_channel* head, int ch_id);
 void display(subbed_channel* sub);
+int return_channel_id(subbed_channel* sub);
+
+#endif

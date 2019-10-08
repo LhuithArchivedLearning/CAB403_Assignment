@@ -16,85 +16,19 @@
 #include <sys/mman.h>
 #include <signal.h>
 
+
 #include "shared_mem_struct.h"
 #include "shared.h"
 #include "subscriber_struct.h"
 #include "subscriber.h"
+#include "helper.h"
 
 //#define MYPORT 54321    /* the port users will be connecting to */
 #define BACKLOG 10     /* how many pending connections queue will hold */
 #define MAX 80 
+
 int sockfd, new_fd;
-
-void concactInt(char m[] , int value){
-		char ID_str[4];
-		snprintf(ID_str, sizeof ID_str, "%d", value);
-		strcat(m, ID_str);
-}
-
-int extractDigit(char m[]){
-	char *p = m;
-
-	while(*p){
-		if(isdigit(*p) || ((*p == '-' || *p=='+') && isdigit(*(p + 1)))){
-			return strtol(p, &p, 10); //read number;
-		} else {
-			p++;
-		}
-	}
-}
-
-char* removeSubString(char* string, const char* sub){
-	char *match = string;
-
-	size_t len = strlen(sub);
-
-	if(len > 0){
-		char *p = string;
-		while((p = strstr(p, sub)) != NULL){
-			memmove(p, p + len, strlen(p + len) + 1);
-		}
-	} 
-
-	return string;
-}
-
-char* remove_spaces(char* s){
-	const char* d = s;
-
-	do{
-		while(*d == ' '){
-			++d;
-		}
-	} while (*s++ = *d++);
-}
-
-int parse_input(char* arg, char* seperator, char** arg_array){
-	char* str, *saveptr, *token; 
-	int j;
-
-	for(j = 1, str = arg ; ; j++, str = NULL){
-		
-		//stop seperations after arguments go past 2, for messages
-		if(j > 2){
-			token = strtok_r(str, "", &saveptr);
-		} else {
-			token = strtok_r(str, seperator, &saveptr);
-		}
-
-		if(token == NULL){break;}
-
-		arg_array[j - 1] = malloc(sizeof(token));
-		strcpy(arg_array[j - 1], token);
-	}
-
-	return j - 1;
-}
-
-void clean_up(char ** arg_array, int argc){
-	printf("Cleaning up...\n");
-	for(int i = 0; i < argc; i++){free(arg_array[i]);}
-}
+callback display_channels = display;
 
 volatile int pid_test = 0;
 
@@ -102,7 +36,6 @@ void SIGHANDLE(const int sig){
 
 	if(sig == SIGINT){
 		printf("pid %d\n", pid_test);
-		
 		
 		if(pid_test == 0){clean_up_shared_mem();}
 
@@ -116,7 +49,7 @@ void sigint_handler(int sig){
 
 	sig_flag = 0;
 
-	//printf("pid:%d AHHH SIGINT!\n", getpid());
+	printf("pid:%d AHHH SIGINT!\n", getpid());
 	if(pid_test == 0){clean_up_shared_mem();}
 
 	//exit(0);
@@ -135,6 +68,13 @@ void wrong_args(char b[]){
 	strcpy(b, m);
 }
 
+void write_to_buff(char b[], char *s){
+	char m[32];
+	strcpy(m, s);
+	strcat(m, "\n");
+	strcpy(b, m);
+}
+
 void subscribe(client* c, int id, char buff[]){
 		subbed_channel* sub_tmp = NULL;
 		//Passing Subbing information 
@@ -145,7 +85,7 @@ void subscribe(client* c, int id, char buff[]){
 
 		if(sub_tmp != NULL){
 			strcpy(message, "Already Subscribed to ");
-			concactInt(message, c->head->channel_id);
+			cancat_int(message, c->head->channel_id);
 			strcat(message, "\n");
 			strcpy(buff, message);
 			return;
@@ -157,7 +97,7 @@ void subscribe(client* c, int id, char buff[]){
 		channel *cur_channel = &memptr->channels[id];
 		c->head->read_index = cur_channel->post_index;
 
-		concactInt(message, c->head->channel_id);
+		cancat_int(message, c->head->channel_id);
 
 		strcat(message, "\n");
 		strcpy(buff, message);
@@ -166,7 +106,7 @@ void subscribe(client* c, int id, char buff[]){
 void unsubscribe(client* c, int id, char buff[]){
 
 	subbed_channel* sub_tmp = NULL;
-	callback display_channels = display;
+
 	char message[32] = {"Unsubscribing from "};
 
 	if(c->head == NULL){
@@ -183,7 +123,7 @@ void unsubscribe(client* c, int id, char buff[]){
 		traverse(c->head, display);
 	}
 
-	concactInt(message, id);
+	cancat_int(message, id);
 
 	strcat(message, "\n");
 	strcpy(buff, message);			
@@ -204,11 +144,11 @@ void next(client* c, int id, char buff[]){
 
 	if(sub_tmp == NULL){
 		strcpy(message, "Not subscribed to channel ");
-		concactInt(message, id);
+		cancat_int(message, id);
 	} else {
 		channel *cur_channel = &memptr->channels[id];
 		
-		concactInt(message, id);
+		cancat_int(message, id);
 		strcat(message, ":");
 	
 		if(sub_tmp->read_index < cur_channel->post_index){
@@ -222,25 +162,41 @@ void next(client* c, int id, char buff[]){
 	strcpy(buff, message);
 }
 
-void livefeed(client* c, int id, char buff[]){
+void Channels(client* c, int id, int socket, char reader[]){
 
-	char message[32] = {"GOING LIVE!"};
+	subbed_channel* sub_tmp = NULL;
+	sub_tmp = search(c->head, id);
 
-	if(c->head == NULL){
-		no_subscription(message, buff);
-		return;
-	} 
-
-	strcat(message, "\n");
-	strcpy(buff, message);
+	if(sub_tmp == NULL){
+		printf("no channels");
+	} else {
+		while(sub_tmp != NULL){
+		printf("inlive: %d\n", sub_tmp->channel_id);
+		sub_tmp = sub_tmp->next;
+	}
+	}
 }
 
+void livefeed(client* c, int id, int socket, char reader[]){
+
+	subbed_channel* sub_tmp = NULL;
+	sub_tmp = search(c->head, id);
+
+	if(sub_tmp == NULL){
+		printf("no channels");
+	} else {
+		while(sub_tmp != NULL){
+		printf("inlive: %d\n", sub_tmp->channel_id);
+		sub_tmp = sub_tmp->next;
+	}
+	}
+}
 
 void server_chat(int sockfd, int c) { 
     char read_buff[MAX]; 
 	char answer_buff[MAX];
 	char* argv[5];
-	int argc, channel_id = 0;
+	int argc, channel_id = 0, livefeed = 0;
 
 	client* new_client = malloc(sizeof(client));
 	new_client->client_id = c;
@@ -258,21 +214,17 @@ void server_chat(int sockfd, int c) {
 
         // read the message from client and copy it in buffer 
         read(sockfd, read_buff, sizeof(read_buff)); 
-        
+
+		printf("from client: %s", read_buff);
 		// print buffer which contains the client contents 
 		argc = parse_input(read_buff, " ", argv);
 		
-		//for(int i = 0; i < argc; i++) {
-		//	//if(argv[i] == NULL){break;}
-		//
-		//	//if(i == 0){printf("From Client: ");}
-		//	//printf("arg %d: %s ", i, argv[i]);
-		//}
-
-		if(argc > 1){ channel_id = atoi(argv[1]);}
+		if(argc >= 2){
+			channel_id = is_numeric(argv[1]);
+		}
 
 		// if msg contains "Exit" then server exit and chat ended. 
-        if (strncmp("BYE", argv[0], 3) == 0) { 
+        if (strncmp(argv[0], "BYE", 3) == 0) { 
            
 		    printf("Closing Client <%d>...\n", c); 		
 			
@@ -283,43 +235,60 @@ void server_chat(int sockfd, int c) {
             
 			break; 
         } else if (strncmp(argv[0], "SUB", 3) == 0) { 
-
+			
 			if(argc < 2){
 				wrong_args(answer_buff); 
-			} else {				
-				subscribe(new_client, channel_id, answer_buff);
+			} else {
+				if(channel_id == -1){
+					write_to_buff(answer_buff, "Please Use Numerical Values.");
+				} else {
+					subscribe(new_client, channel_id, answer_buff);
+				}				
 			}
-
-			
 		} else if (strncmp(argv[0], "UNSUB", 5) == 0) { 
 			unsubscribe(new_client, channel_id, answer_buff);
 		} else if (strncmp(argv[0], "NEXT", 4) == 0) { 
 			next(new_client, channel_id, answer_buff);
 		} else if (strncmp(argv[0],"LIVEFEED", 8) == 0) {
-			livefeed(new_client, channel_id, answer_buff);
+			
+			if(new_client->head == NULL){
+				char message[32] = {""};
+				no_subscription(message, answer_buff);
+			} else {
+				
+				for(int i = 0; i < 5; i++){
+					char m[5];
+					cancat_int(m, i);
+					write(sockfd, m, sizeof(m));
+				}
+				//livefeed(new_client, channel_id, sockfd, read_buff);
+			} 
+
 		} else if (strncmp(argv[0], "SEND", 4) == 0) { 
 			
-			if(argc > 2){
-			
-			channel *cur_channel = &memptr->channels[channel_id];
-			
-			removeSubString(argv[2], "\n");
-			strcpy(cur_channel->posts[cur_channel->post_index++].message, argv[2]);
-
-			char message[25] = {"Client #"};
-			concactInt(message, c);
-			strcat(message, ": ");
-
-			strcat(message, read_buff);
-
-			//strcpy(memptr->channels[0].posts[0].message, message);
-			strcpy(answer_buff, "Message Sent to : ");
-			concactInt(answer_buff,  channel_id);
-			strcat(answer_buff, "\n");
+			if(argc != 3){
+				wrong_args(answer_buff);
 			} else {
-				strcpy(answer_buff, "Missing Arguments.\n");
+							
+				channel *cur_channel = &memptr->channels[channel_id];
+
+				remove_substring(argv[2], "\n");
+				strcpy(cur_channel->posts[cur_channel->post_index++].message, argv[2]);
+
+				char message[25] = {"Client #"};
+				cancat_int(message, c);
+				strcat(message, ": ");
+
+				strcat(message, read_buff);
+
+
+				strcpy(answer_buff, "Message Sent to : ");
+				cancat_int(answer_buff,  channel_id);
+				strcat(answer_buff, "\n");
 			}
 
+		} else if (strncmp(argv[0], "CHANNELS", 8) == 0) { 
+			Channels(new_client, channel_id, sockfd, read_buff);
 		} 
 
 		write(sockfd, answer_buff, sizeof(answer_buff));
@@ -408,7 +377,7 @@ int main(int argc, char *argv[]){
 			/* WELCOME MESSAGE */	
 			char message[255] = {"Welcome! Your Client ID is <"};
 			int clientid = memptr->num_clients++;
-			concactInt(message, clientid);
+			cancat_int(message, clientid);
 			strcat(message, ">\n");
 			size_t len = strlen(message);
 			/* WELCOME MESSAGE */	

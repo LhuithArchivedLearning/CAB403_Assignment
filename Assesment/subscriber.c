@@ -231,3 +231,9 @@ void display(subbed_channel* sub){
     }
 }
 
+int return_channel_id(subbed_channel* sub){
+    if(sub != NULL){
+        return sub->channel_id;
+    } 
+}
+
