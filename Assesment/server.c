@@ -177,26 +177,98 @@ void Channels(client* c, int id, int socket, char reader[]){
 	}
 }
 
-void livefeed(client* c, int id, int socket, char reader[]){
+void livefeed(client* c, int id, int s, char r[], char a[], size_t s_r, size_t s_a){
+	strcpy(a, "\0");
+	write(s, a, s_a);
+	bzero(a, MAX);
+	bzero(r, MAX);
+	
+	subbed_channel* cursor = NULL;
+	cursor = c->head;
 
-	subbed_channel* sub_tmp = NULL;
-	sub_tmp = search(c->head, id);
+	while(1){
 
-	if(sub_tmp == NULL){
-		printf("no channels");
-	} else {
-		while(sub_tmp != NULL){
-		printf("inlive: %d\n", sub_tmp->channel_id);
-		sub_tmp = sub_tmp->next;
+		if(!sig_flag){break;}
+		
+		read(s, r, s_r); 
+
+		if (strncmp(r, "SIG_MES", 7) == 0){ 
+			strcpy(a, "\0");
+			printf("Exit Command.\n"); 
+			break;
+		}
+
+		channel *cur_channel = &memptr->channels[cursor->channel_id];
+		
+		if(cursor->read_index < cur_channel->post_index){
+				char m[32] = "";
+				cancat_int(m, cursor->channel_id);
+				strcat(m, ":");
+				strcat(m, cur_channel->posts[cursor->read_index++].message);
+				strcpy(a, m);
+		} else {
+			strcpy(a, "\0");
+		}
+
+		write(s, a, s_a);
+		
+		bzero(a, MAX);
+		bzero(r, MAX);
+		
+		if(cursor->next != NULL){cursor = cursor->next;} else {cursor = c->head;}
 	}
-	}
+}
+
+void read_write_flush(char r[], size_t r_s, char w[], size_t w_s, int sock){
+		read(sock, r, r_s);
+		write(sock, w, w_s);
+		bzero(r, MAX);
+		bzero(w, MAX);
+}
+
+
+void read_input(char r[], int socket, size_t buffsize){
+
+		char *argv[5];
+		int argc;
+
+        bzero(r, MAX); 
+
+        // read the message from client and copy it in buffer 
+        read(socket, r, buffsize);
+
+		//if (strncmp(read_buff, "\0", 3) == 0) { continue;}
+
+		printf("read input: %s", r);
+
+		argc = parse_input(r, " ", argv);
+
+
+		// if msg contains "Exit" then server exit and chat ended. 
+        if (strncmp(argv[0], "BYE", 3) == 0) { 
+
+        } else if (strncmp(argv[0], "SUB", 3) == 0) { 
+			printf("%s", "subbed\n");
+		} else if (strncmp(argv[0], "UNSUB", 5) == 0) { 
+
+		} else if (strncmp(argv[0], "NEXT", 4) == 0) { 
+
+		} else if (strncmp(argv[0],"LIVEFEED", 8) == 0) {
+			
+		} else if (strncmp(argv[0], "SEND", 4) == 0) { 
+			
+		} else if (strncmp(argv[0], "CHANNELS", 8) == 0) { 
+
+		} 
+
+		bzero(r, MAX);
 }
 
 void server_chat(int sockfd, int c) { 
     char read_buff[MAX]; 
 	char answer_buff[MAX];
 	char* argv[5];
-	int argc, channel_id = 0, livefeed = 0;
+	int argc, channel_id = 0;
 
 	client* new_client = malloc(sizeof(client));
 	new_client->client_id = c;
@@ -213,9 +285,17 @@ void server_chat(int sockfd, int c) {
 		strcpy(answer_buff, "Input Not Found.\n");
 
         // read the message from client and copy it in buffer 
-        read(sockfd, read_buff, sizeof(read_buff)); 
+        if (read(sockfd, read_buff, sizeof(read_buff)) < 0){
+			continue;
+		} 
 
-		printf("from client: %s", read_buff);
+		if (strncmp(read_buff, "\0", 2) == 0) { 
+			strcpy(answer_buff, "");
+			}
+
+		printf("client sent: %s", read_buff);
+
+		//printf("from client: %s", read_buff);
 		// print buffer which contains the client contents 
 		argc = parse_input(read_buff, " ", argv);
 		
@@ -252,16 +332,19 @@ void server_chat(int sockfd, int c) {
 		} else if (strncmp(argv[0],"LIVEFEED", 8) == 0) {
 			
 			if(new_client->head == NULL){
-				char message[32] = {""};
-				no_subscription(message, answer_buff);
+				strcpy(answer_buff, "/1");
+
+				write(sockfd, answer_buff, sizeof(answer_buff));
+				bzero(answer_buff, MAX);
+				bzero(read_buff, MAX);
+				continue;
 			} else {
-				
-				for(int i = 0; i < 5; i++){
-					char m[5];
-					cancat_int(m, i);
-					write(sockfd, m, sizeof(m));
-				}
-				//livefeed(new_client, channel_id, sockfd, read_buff);
+
+			livefeed(
+			new_client, channel_id, sockfd, read_buff, 
+			answer_buff, sizeof(read_buff), sizeof(answer_buff)
+			);	
+				continue;	
 			} 
 
 		} else if (strncmp(argv[0], "SEND", 4) == 0) { 

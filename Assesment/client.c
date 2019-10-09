@@ -26,27 +26,34 @@ typedef struct socket_info_struct{
 } socket_info;
 
 volatile sig_atomic_t sig_flag = 1;
-
+volatile sig_atomic_t live_flag = 0;
 
 void sigint_handler(int sig){
-
-	//if live, turn off live 
-	//if not live, sig pff
-	sig_flag = 0;
+	
 
 	//printf("pid:%d AHHH SIGINT!\n", getpid());
+
+	if(live_flag == 1){ 
+
+		live_flag = 0; 
+	} else {
+
+		sig_flag = 0;
+	}
+
+	//exit(0);
 }
 
 void client_chat(int sockfd) 
 { 
 	client_socket = sockfd;
     char buff[MAX]; 
-    int n, lf; 
+    int n, f; 
 
     while (sig_flag) { 
 		
-		bzero(buff, sizeof(buff)); 
-        n = 0; 
+		bzero(buff, MAX); 
+        n = 0, f = 0; 
 
 		socket_info socketpass;
 		socketpass.socket_fd = sockfd;
@@ -56,19 +63,46 @@ void client_chat(int sockfd)
 		if ((strncmp(buff, "BYE", 3)) == 0) { 
 			break; 
         } else if ((strncmp(buff, "LIVEFEED", 8)) == 0) { 
-			//live_flag = 1;
+			
+			live_flag = 1;
+
+			write(sockfd, buff, sizeof(buff));
+			bzero(buff, MAX);
+			
+			while(1){
+				
+				if(live_flag == 0){strcpy(buff, "SIG_MES\0"); break;}
+
+				if(f = read(sockfd, buff, sizeof(buff)) < 0){ printf("Connection Lost.\n"); break;}
+				
+				if(strncmp(buff, "/1", 1) == 0){ 
+					printf("%s\n", "Not Subbed to channel");
+					live_flag = 0;
+					bzero(buff, MAX);
+					break;
+				}
+
+				if(strncmp(buff, "\0", 2) != 0){ 
+					printf("%s\n", buff);
+				}
+				strcpy(buff, "\0");
+				write(sockfd, buff, sizeof(buff)); 
+				bzero(buff, MAX);
+			}
+			n = 0;
 		}
 		
         write(sockfd, buff, sizeof(buff)); 
-        bzero(buff, sizeof(buff)); 
+		bzero(buff, MAX);
 
-		if(read(sockfd, buff, sizeof(buff)) == -1){
+		if(f = read(sockfd, buff, sizeof(buff)) == -1){
 			printf("%s", "Lost Connection."); 
 			break;
 		}
 
 		//From Server
-        if(sig_flag) printf("%s", buff); 
+        if(strncmp(buff, "\0", 2) != 0) {printf("%s", buff);};
+		bzero(buff, MAX); 
     } 
 
 	client_exit();
