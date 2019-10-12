@@ -291,7 +291,7 @@ void server_chat(int sockfd, int c) {
 
 		if (strncmp(read_buff, "\0", 2) == 0) { 
 			strcpy(answer_buff, "");
-			}
+		}
 
 		printf("client sent: %s", read_buff);
 
@@ -333,11 +333,6 @@ void server_chat(int sockfd, int c) {
 			
 			if(new_client->head == NULL){
 				strcpy(answer_buff, "/1");
-
-				write(sockfd, answer_buff, sizeof(answer_buff));
-				bzero(answer_buff, MAX);
-				bzero(read_buff, MAX);
-				continue;
 			} else {
 
 			livefeed(

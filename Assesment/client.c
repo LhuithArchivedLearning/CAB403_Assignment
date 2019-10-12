@@ -78,7 +78,7 @@ void client_chat(int sockfd)
 				if(strncmp(buff, "/1", 1) == 0){ 
 					printf("%s\n", "Not Subbed to channel");
 					live_flag = 0;
-					bzero(buff, MAX);
+					strcpy(buff, "\0");
 					break;
 				}
 
