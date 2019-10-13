@@ -49,10 +49,9 @@ void sigint_handler(int sig){
 
 	sig_flag = 0;
 
-	printf("pid:%d AHHH SIGINT!\n", getpid());
+	printf("pid:%d\n", getpid());
 	if(pid_test == 0){clean_up_shared_mem();}
 
-	//exit(0);
 }
 
 struct memory* memptr;
@@ -77,6 +76,7 @@ void write_to_buff(char b[], char *s){
 
 void subscribe(client* c, int id, char buff[]){
 		subbed_channel* sub_tmp = NULL;
+
 		//Passing Subbing information 
 		//-------------------------------------
 		char message[32] = {"Subscribed to channel "};
@@ -170,19 +170,14 @@ void Channels(client* c, int id, int socket, char reader[]){
 	if(sub_tmp == NULL){
 		printf("no channels");
 	} else {
-		while(sub_tmp != NULL){
-		printf("inlive: %d\n", sub_tmp->channel_id);
-		sub_tmp = sub_tmp->next;
-	}
+			while(sub_tmp != NULL){
+			printf("inlive: %d\n", sub_tmp->channel_id);
+			sub_tmp = sub_tmp->next;
+		}
 	}
 }
 
 void livefeed(client* c, int id, int s, char r[], char a[], size_t s_r, size_t s_a){
-	strcpy(a, "\0");
-	write(s, a, s_a);
-	bzero(a, MAX);
-	bzero(r, MAX);
-	
 	subbed_channel* cursor = NULL;
 	cursor = c->head;
 
@@ -217,51 +212,6 @@ void livefeed(client* c, int id, int s, char r[], char a[], size_t s_r, size_t s
 		
 		if(cursor->next != NULL){cursor = cursor->next;} else {cursor = c->head;}
 	}
-}
-
-void read_write_flush(char r[], size_t r_s, char w[], size_t w_s, int sock){
-		read(sock, r, r_s);
-		write(sock, w, w_s);
-		bzero(r, MAX);
-		bzero(w, MAX);
-}
-
-
-void read_input(char r[], int socket, size_t buffsize){
-
-		char *argv[5];
-		int argc;
-
-        bzero(r, MAX); 
-
-        // read the message from client and copy it in buffer 
-        read(socket, r, buffsize);
-
-		//if (strncmp(read_buff, "\0", 3) == 0) { continue;}
-
-		printf("read input: %s", r);
-
-		argc = parse_input(r, " ", argv);
-
-
-		// if msg contains "Exit" then server exit and chat ended. 
-        if (strncmp(argv[0], "BYE", 3) == 0) { 
-
-        } else if (strncmp(argv[0], "SUB", 3) == 0) { 
-			printf("%s", "subbed\n");
-		} else if (strncmp(argv[0], "UNSUB", 5) == 0) { 
-
-		} else if (strncmp(argv[0], "NEXT", 4) == 0) { 
-
-		} else if (strncmp(argv[0],"LIVEFEED", 8) == 0) {
-			
-		} else if (strncmp(argv[0], "SEND", 4) == 0) { 
-			
-		} else if (strncmp(argv[0], "CHANNELS", 8) == 0) { 
-
-		} 
-
-		bzero(r, MAX);
 }
 
 void server_chat(int sockfd, int c) { 
@@ -330,17 +280,62 @@ void server_chat(int sockfd, int c) {
 		} else if (strncmp(argv[0], "NEXT", 4) == 0) { 
 			next(new_client, channel_id, answer_buff);
 		} else if (strncmp(argv[0],"LIVEFEED", 8) == 0) {
-			
-			if(new_client->head == NULL){
-				strcpy(answer_buff, "/1");
-			} else {
 
-			livefeed(
-			new_client, channel_id, sockfd, read_buff, 
-			answer_buff, sizeof(read_buff), sizeof(answer_buff)
-			);	
-				continue;	
-			} 
+			//Reading LIVEFEED
+
+			if(new_client->head == NULL){
+				//Cant LiveFeed, Answers with N
+				strcpy(answer_buff, "N");
+			} else {
+				int live = 1;
+				subbed_channel* cursor = NULL;
+				cursor = new_client->head;	
+				char m[32] = "";
+
+				//confirming with the client to start livefeed
+				strcpy(answer_buff, "R");
+				write(sockfd, answer_buff, sizeof(answer_buff));
+				bzero(answer_buff, MAX);
+				bzero(read_buff, MAX);
+
+				while(live){
+					//now read, then write
+					read(sockfd, read_buff, sizeof(read_buff));
+					
+					//Handling SIG
+					if(strncmp(read_buff, "SIG", 3) == 0){
+
+					}
+
+					//stream read, if stream is broken please stapt after
+					if(strncmp(read_buff, "s", 1) == 0){
+					} else {
+						live = 0;
+					}
+
+					channel *cur_channel = &memptr->channels[cursor->channel_id];
+
+					if(cursor->read_index < cur_channel->post_index){
+						memset(m, 0, sizeof(m)); //clear message buffer
+						cancat_int(m, cursor->channel_id);
+						strcat(m, ":");
+						strcat(m, cur_channel->posts[cursor->read_index++].message);
+						strcpy(answer_buff, m);
+					} else {
+						strcpy(answer_buff, "\0");
+					}
+
+					write(sockfd, answer_buff, sizeof(answer_buff));
+					
+					if(cursor->next != NULL){cursor = cursor->next;} else {cursor = new_client->head;}
+
+					bzero(answer_buff, MAX);
+					bzero(read_buff, MAX);
+				}
+
+				continue;
+			}
+
 
 		} else if (strncmp(argv[0], "SEND", 4) == 0) { 
 			
@@ -360,13 +355,72 @@ void server_chat(int sockfd, int c) {
 				strcat(message, read_buff);
 
 
-				strcpy(answer_buff, "Message Sent to : ");
-				cancat_int(answer_buff,  channel_id);
-				strcat(answer_buff, "\n");
+				strcpy(answer_buff, "\0");
+				//cancat_int(answer_buff,  channel_id);
+				//strcat(answer_buff, "\n");
 			}
 
 		} else if (strncmp(argv[0], "CHANNELS", 8) == 0) { 
-			Channels(new_client, channel_id, sockfd, read_buff);
+			//Reading LIVEFEED
+
+			if(new_client->head == NULL){
+				//Cant LiveFeed, Answers with N
+				strcpy(answer_buff, "N");
+			} else {
+				int live = 1;
+				subbed_channel* cursor = NULL;
+				cursor = new_client->head;	
+				char m[32] = "";
+
+				//confirming with the client to start livefeed
+				strcpy(answer_buff, "R");
+				write(sockfd, answer_buff, sizeof(answer_buff));
+				bzero(answer_buff, MAX);
+				bzero(read_buff, MAX);
+
+				while(live){
+					//now read, then write
+					read(sockfd, read_buff, sizeof(read_buff));
+					
+					//Handling SIG
+					if(strncmp(read_buff, "SIG", 3) == 0){
+
+					}
+
+					//stream read, if stream is broken please stapt after
+					if(strncmp(read_buff, "s", 1) == 0){
+					} else {
+						live = 0;
+					}
+
+					if(cursor != NULL){
+						
+						channel *cur_channel = &memptr->channels[cursor->channel_id];
+
+						memset(m, 0, sizeof(m)); //clear message buffer
+						cancat_int(m, cursor->channel_id);
+						strcat(m, ":");
+						strcat(m, "\t");
+						cancat_int(m, cur_channel->post_index);
+						strcat(m, "\t");
+						cancat_int(m, cursor->read_index);
+						strcat(m, "\t");
+						cancat_int(m, cur_channel->post_index - cursor->read_index);
+						strcpy(answer_buff, m);
+						cursor = cursor->next;
+						
+					} else { 
+						live = 0;
+						strcpy(answer_buff, "d");
+					}
+					
+					write(sockfd, answer_buff, sizeof(answer_buff));
+
+					bzero(answer_buff, MAX);
+					bzero(read_buff, MAX);
+				}
+				continue;
+			}
 		} 
 
 		write(sockfd, answer_buff, sizeof(answer_buff));
