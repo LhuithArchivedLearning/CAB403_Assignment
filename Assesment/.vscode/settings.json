@@ -2,6 +2,9 @@
     "git.ignoreLimitWarning": true,
     "files.associations": {
         "shared_mem_struct.h": "c",
-        "stdio.h": "c"
+        "stdio.h": "c",
+        "string.h": "c",
+        "stdlib.h": "c",
+        "printf_helper.h": "c"
     }
 }
