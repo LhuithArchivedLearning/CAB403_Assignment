@@ -12,7 +12,7 @@
 #client.o
 
 SERVER_OBJ = server.o shared.o subscriber.o helper.o printf_helper.o
-CLIENT_OBJ = client.o printf_helper.o
+CLIENT_OBJ = client.o printf_helper.o helper.o
 
 CC_FLAGS=-std=c99 -lrt -pthread#-Wall -Werror -g #-I../ZDK 
 LD_FLAGS=

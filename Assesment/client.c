@@ -12,6 +12,7 @@
 #include <semaphore.h>
 
 #include "printf_helper.h"
+#include "helper.h"
 
 //#define PORT 54321    /* the port client will be connecting to */
 #define MAXDATASIZE 100 /* max number of bytes we can get at once */
@@ -77,6 +78,63 @@ struct read_write_struct{
 pthread_mutex_t r_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t w_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+void locked_cpy(char b[], char m[]){
+	pthread_mutex_lock(&w_mutex);
+		strcpy(b, m);
+	pthread_mutex_unlock(&w_mutex);
+}
+
+void locked_write_zero(char b[]){
+	pthread_mutex_lock(&w_mutex);
+		bzero(b, MAX);
+	pthread_mutex_unlock(&w_mutex);
+}
+
+sem_t mutex;
+
+void* livefeed_thread(void* struct_pass){
+	
+	struct read_write_struct *read_write = (struct read_write_struct*) struct_pass;
+
+	char r_buff[MAX];
+	char w_buff[MAX];
+
+	bzero(r_buff, MAX);
+	bzero(w_buff, MAX);
+
+	while(sig_flag){
+		while (*read_write->live_ptr){
+			sleep(1);
+
+			//write
+			strcpy(w_buff, "s");
+
+			if (live_flag == 0){
+				strcpy(w_buff, "d");
+				*read_write->live_ptr = 0;
+			}
+
+			//sem_wait(&mutex);
+				write(read_write->socket, w_buff, sizeof(w_buff));
+			//sem_post(&mutex);
+
+			//read
+			read(read_write->socket, r_buff, sizeof(r_buff));
+
+			if(strncmp(r_buff, "w", 1) != 0) printf("%s\n", r_buff);
+
+			if(strncmp(r_buff, "z", 1) == 0){
+				printf("clearing that shizz.\n");
+				read_write->w_buff[0] = ' '; //dumb Ctrl-c		
+			}
+
+			bzero(r_buff, MAX);
+			bzero(w_buff, MAX);
+		}
+	}
+}
+
+
 void* livefeed(void* struct_pass){
 	
 	struct read_write_struct *read_write = (struct read_write_struct*) struct_pass;
@@ -84,37 +142,40 @@ void* livefeed(void* struct_pass){
 	char read_buffer[MAX];
 	char write_buffer[MAX];
 
+	bzero(read_buffer, MAX);
+	bzero(write_buffer, MAX);
+
 	while(*read_write->sig_flag_ptr){
 			while (*read_write->live_ptr){
 				
-				strcpy(read_write->w_buff, "s");
+				strcpy(write_buffer, "s");
 
 				if (live_flag == 0){
-					strcpy(read_write->w_buff, "d");
+					strcpy(write_buffer, "d");
 					*read_write->live_ptr = 0;
 				}
 				
 				sem_wait(read_write->w_mute);
-					write(read_write->socket, read_write->w_buff, read_write->w_size);		
+					write(read_write->socket, write_buffer, sizeof(write_buffer));		
 				sem_post(read_write->w_mute);
 
 				sem_post(read_write->r_mute);
-					read(read_write->socket, read_write->r_buff, read_write->r_size);
+					read(read_write->socket, read_buffer, sizeof(read_buffer));
 				sem_post(read_write->r_mute);
 
 				
-				if (strncmp(read_write->r_buff, "nc", 2) == 0){
+				if (strncmp(read_buffer, "nc", 2) == 0){
 					//*read_write->live_flag_ptr = 0;
 					*read_write->live_flag_ptr = 0;
 					*read_write->live_ptr = 0;
-				} else if (strncmp(read_write->r_buff, "\0", 2) != 0){
+				} else if (strncmp(read_buffer, "\0", 2) != 0){
 					printf(YELLOW);
-						printf("%s\n", read_write->r_buff);
+						printf("%s\n", read_buffer);
 					printf(RESET);
 				}
 
-			bzero(read_write->w_buff, MAX);
-			bzero(read_write->r_buff, MAX);	
+			bzero(read_buffer, MAX);
+			bzero(write_buffer, MAX);	
 			sleep(1);
 		}
 	}
@@ -137,7 +198,7 @@ void client_chat(int sockfd)
 
 	int n = 0, f;
 
-	sem_init(&w_mutex, 1, 1);
+	sem_init(&mutex, 0, 1);
 
 	//----------------- LIVE FEED ----------------------------
 	struct read_write_struct *read_write = malloc(sizeof(struct read_write_struct));
@@ -159,9 +220,13 @@ void client_chat(int sockfd)
 
 	pthread_attr_t attr;
 	pthread_attr_init(&attr);
-	pthread_create(&live_tid, &attr, livefeed, read_write);
-
+	pthread_create(&live_tid, &attr, livefeed_thread, read_write);
+	
 //----------------- LIVE FEED ----------------------------
+
+	
+	char* argv[5];
+	char parse_string[MAX];
 
 	while (sig_flag){
 		bzero(r_buff, MAX);
@@ -172,27 +237,34 @@ void client_chat(int sockfd)
 		socket_info socketpass;
 		socketpass.socket_fd = sockfd;
 		
-		//sem_post(&w_mutex);
-			while (((w_buff[n++] = getchar()) != '\n') != 0 && sig_flag){}
-		//sem_wait(&w_mutex);
+
+		while (((w_buff[n++] = getchar()) != '\n') != 0 && sig_flag){
+		}
+
+		strcpy(parse_string, w_buff);
+
+		parse_input(parse_string, " ", argv);
 
 		if ((strncmp(w_buff, "BYE", 3)) == 0){
 			break;
-		} else if ((strncmp(w_buff, "LIVEFEED", 8)) == 0 && !live_flag){
+		} else if ((strncmp(argv[0], "LIVEFEED", 8)) == 0 && !live_flag){
 			//say LIVEFEED
-		
-			sem_wait(&w_mutex);
 				write(sockfd, w_buff, sizeof(w_buff));
-			sem_post(&w_mutex);
 
-			//read wetther to go or not
-
-			sem_wait(&r_mutex);
 				read(sockfd, r_buff, sizeof(r_buff));
-			sem_post(&r_mutex);
 
 			if (strncmp(r_buff, "N", 1) == 0){
 				printf("Not subscribed to any channels.\n");
+				live_flag = 0;
+				live = 0;
+			} else if (strncmp(r_buff, "C", 2) == 0){
+				char m[10]= "";
+
+				strcpy(m, "Not subscribed to channel ");
+				cancat_int(m, atoi(argv[1]));
+				strcat(m, ".");
+
+				printf("%s\n", m);
 				live_flag = 0;
 				live = 0;
 			}
@@ -273,22 +345,21 @@ void client_chat(int sockfd)
 				live_flag = 0;
 			}
 		}
-
-		sem_wait(&w_mutex);
+//
+		//sem_wait(&mutex);
 			write(sockfd, w_buff, sizeof(w_buff));
-		sem_post(&w_mutex);
+		//sem_post(&mutex);
 
 		//bzero(buff, MAX);
 
-		sem_wait(&r_mutex);
-			if (f = read(sockfd, r_buff, sizeof(r_buff)) == -1){
-				printf("%s", "Lost Connection.\n");
-				break;
-			}
-		sem_post(&r_mutex);
+		if (f = read(sockfd, r_buff, sizeof(r_buff)) == -1){
+			printf("%s", "Lost Connection.\n");
+			break;
+		}
+		//sem_post(&r_mutex);
 
 		//From Server
-		if (strncmp(r_buff, "\0", 2) != 0){
+		if (strncmp(r_buff, "\0", 2) != 0 && strncmp(r_buff, "w", 1) != 0){
 			printf(BLUE);
 				printf("%s", r_buff);
 			printf(RESET);
@@ -301,15 +372,16 @@ void client_chat(int sockfd)
 	client_exit();
 	strcpy(w_buff, "BYE\n");
 
-	sem_wait(&w_mutex);
+	
 		write(sockfd, w_buff, sizeof(w_buff));
-	sem_post(&w_mutex);
+
 	
 	bzero(w_buff, MAX);
 	//sem_destroy(&mutex);
 	free(read_write);
 	printf("Threads %u closing.\n", live_tid);
 	pthread_join(live_tid, NULL);
+	sem_destroy(&mutex);
 
 }
 
