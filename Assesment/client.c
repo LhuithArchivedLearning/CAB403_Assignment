@@ -81,8 +81,8 @@ void* livefeed(void* struct_pass){
 	
 	struct read_write_struct *read_write = (struct read_write_struct*) struct_pass;
 
-	//char read_buffer[MAX];
-	//char write_buffer[MAX];
+	char read_buffer[MAX];
+	char write_buffer[MAX];
 
 	while(*read_write->sig_flag_ptr){
 			while (*read_write->live_ptr){
@@ -94,13 +94,13 @@ void* livefeed(void* struct_pass){
 					*read_write->live_ptr = 0;
 				}
 				
-				sem_post(read_write->w_mute);
-					write(read_write->socket, read_write->w_buff, read_write->w_size);		
 				sem_wait(read_write->w_mute);
+					write(read_write->socket, read_write->w_buff, read_write->w_size);		
+				sem_post(read_write->w_mute);
 
 				sem_post(read_write->r_mute);
 					read(read_write->socket, read_write->r_buff, read_write->r_size);
-				sem_wait(read_write->r_mute);
+				sem_post(read_write->r_mute);
 
 				
 				if (strncmp(read_write->r_buff, "nc", 2) == 0){
@@ -181,17 +181,15 @@ void client_chat(int sockfd)
 		} else if ((strncmp(w_buff, "LIVEFEED", 8)) == 0 && !live_flag){
 			//say LIVEFEED
 		
-			sem_post(&w_mutex);
-				write(sockfd, w_buff, sizeof(w_buff));
 			sem_wait(&w_mutex);
-
-			//bzero(w_buff, MAX);
+				write(sockfd, w_buff, sizeof(w_buff));
+			sem_post(&w_mutex);
 
 			//read wetther to go or not
 
-			sem_post(&r_mutex);
-				read(sockfd, r_buff, sizeof(r_buff));
 			sem_wait(&r_mutex);
+				read(sockfd, r_buff, sizeof(r_buff));
+			sem_post(&r_mutex);
 
 			if (strncmp(r_buff, "N", 1) == 0){
 				printf("Not subscribed to any channels.\n");
@@ -199,7 +197,7 @@ void client_chat(int sockfd)
 				live = 0;
 			}
 			else {
-				printf("Going live\n");
+				//printf("Going live\n");
 				live_flag = 1;	
 				live = 1;
 			}
@@ -271,23 +269,23 @@ void client_chat(int sockfd)
 			continue;
 		} else if ((strncmp(w_buff, "STOP", 4)) == 0){
 			if(live_flag){
-				printf("Stopping Livefeed.\n");
+				//printf("Stopping Livefeed.\n");
 				live_flag = 0;
 			}
 		}
 
-		sem_post(&w_mutex);
-			write(sockfd, w_buff, sizeof(w_buff));
 		sem_wait(&w_mutex);
+			write(sockfd, w_buff, sizeof(w_buff));
+		sem_post(&w_mutex);
 
 		//bzero(buff, MAX);
 
-		sem_post(&r_mutex);
+		sem_wait(&r_mutex);
 			if (f = read(sockfd, r_buff, sizeof(r_buff)) == -1){
 				printf("%s", "Lost Connection.\n");
 				break;
 			}
-		sem_wait(&r_mutex);
+		sem_post(&r_mutex);
 
 		//From Server
 		if (strncmp(r_buff, "\0", 2) != 0){
@@ -303,9 +301,9 @@ void client_chat(int sockfd)
 	client_exit();
 	strcpy(w_buff, "BYE\n");
 
-	sem_post(&w_mutex);
-		write(sockfd, w_buff, sizeof(w_buff));
 	sem_wait(&w_mutex);
+		write(sockfd, w_buff, sizeof(w_buff));
+	sem_post(&w_mutex);
 	
 	bzero(w_buff, MAX);
 	//sem_destroy(&mutex);

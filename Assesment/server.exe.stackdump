@@ -1,6 +1,6 @@
-Exception: STATUS_ACCESS_VIOLATION at eip=00401B21
+Exception: STATUS_ACCESS_VIOLATION at eip=00401BB7
 eax=00000038 ebx=20048410 ecx=00000001 edx=00000000 esi=20048470 edi=FBE3CD36
-ebp=FBE3CE08 esp=FBE3CD20 program=C:\Users\Gene-Desktop\Desktop\QUT\Sem_3\CAB403_Assignment\Assesment\server.exe, pid 7424, thread unknown (0x335C)
+ebp=FBE3CE08 esp=FBE3CD20 program=C:\Users\Gene-Desktop\Desktop\QUT\Sem_3\CAB403_Assignment\Assesment\server.exe, pid 4488, thread unknown (0x2234)
 cs=0023 ds=002B es=002B fs=0053 gs=002B ss=002B
 Stack trace:
 Frame     Function  Args

@@ -133,6 +133,8 @@ void unsubscribe(client* c, int id, char buff[]){
 
 void next(client* c, int id, char buff[]){
 	
+	//printf("id : %d\n", id);
+	
 	subbed_channel* sub_tmp = NULL;
 
 	char message[32] = {""};
@@ -142,23 +144,45 @@ void next(client* c, int id, char buff[]){
 		return;
 	} 
 	
-	sub_tmp = search(c->head, id);
 
-	if(sub_tmp == NULL){
-		strcpy(message, "Not subscribed to channel ");
-		cancat_int(message, id);
-	} else {
-		channel *cur_channel = &memptr->channels[id];
+	//if they give me a number
+	if(id > 0){
+		sub_tmp = search(c->head, id);
+
+		if(sub_tmp == NULL){
+			strcpy(message, "Not subscribed to channel ");
+			cancat_int(message, id);
+		} else {
+			channel *cur_channel = &memptr->channels[id];
+			
+			cancat_int(message, id);
+			strcat(message, ":");
 		
-		cancat_int(message, id);
-		strcat(message, ":");
-	
-		if(sub_tmp->read_index < cur_channel->post_index){
-			strcat(message, cur_channel->posts[sub_tmp->read_index++].message);
-		} else {			
-			//strcat(message, "No New Messages");
-		}	
+			if(sub_tmp->read_index < cur_channel->post_index){
+				strcat(message, cur_channel->posts[sub_tmp->read_index++].message);
+			} else {			
+				//strcat(message, "No New Messages");
+			}	
+		}
+	} else {
+		//strcpy(message, "Getting Next Message I GUESS!.");
+		sub_tmp = c->head;//search(c->head, id);
+
+		while(sub_tmp != NULL){
+
+			channel *cur_channel = &memptr->channels[sub_tmp->channel_id];	
+
+			if(sub_tmp->read_index < cur_channel->post_index){
+				cancat_int(message, sub_tmp->channel_id);
+				strcat(message, ":");
+				strcat(message, cur_channel->posts[sub_tmp->read_index++].message);
+				break;
+			} else {			
+				sub_tmp = sub_tmp->next;
+			}
+		}
 	}
+
 
 	strcat(message, "\n");
 	strcpy(buff, message);
@@ -222,14 +246,14 @@ void* livefeed(void* struct_pass){
 
 
 			if(cursor == NULL && read_write->c->head != NULL){
-				printf("Assigning i guess?\n");
+				//printf("Assigning i guess?\n");
 				cursor = read_write->c->head;
 			} 
 			
 			//now read, then write
-			sem_post(read_write->r_mute);
-				read(read_write->s, read_buffer, sizeof(read_buffer));
 			sem_wait(read_write->r_mute);
+				read(read_write->s, read_buffer, sizeof(read_buffer));
+			sem_post(read_write->r_mute);
 
 			//stream read, if stream is broken please stapt after
 			if(strncmp(read_buffer, "s", 1) == 0){
@@ -240,7 +264,9 @@ void* livefeed(void* struct_pass){
 			
 			if (strncmp(read_buffer, "d", 1) == 0){
 				printf("thread %u exiting s\n", *read_write->tid);
-				*read_write->live_ptr = 0;	
+				//cursor = NULL;
+				*read_write->live_ptr = 0;
+				*read_write->live_flag_ptr = 0;
 			}
 
 			//Handling SIG
@@ -249,7 +275,7 @@ void* livefeed(void* struct_pass){
 			}
 			
 			if(cursor != NULL && read_write->c->head != NULL){
-				printf("working i guess?\n");
+				//printf("working i guess?\n");
 				
 				channel *cur_channel = &read_write->memptr->channels[cursor->channel_id];
 			
@@ -260,7 +286,7 @@ void* livefeed(void* struct_pass){
 						strcat(m, cur_channel->posts[cursor->read_index++].message);
 						strcpy(write_buffer, m);
 				
-				printf("working after i guess?\n");
+				//printf("working after i guess?\n");
 
 				} else {
 					strcpy(write_buffer, "\0");
@@ -269,16 +295,16 @@ void* livefeed(void* struct_pass){
 				if(cursor->next != NULL){cursor = cursor->next;} else {cursor = read_write->c->head;}
 			
 			} else {
-				printf("no channels :| %d.\n", *read_write->live_flag_ptr);
+				//printf("no channels :| %d.\n", *read_write->live_flag_ptr);
 				strcpy(write_buffer, "nc");
 				cursor = NULL;
 				*read_write->live_ptr = 0;
 				*read_write->live_flag_ptr = 0;
 			}
 			
-			sem_post(read_write->w_mute);
-				write(read_write->s, write_buffer, sizeof(write_buffer));
 			sem_wait(read_write->w_mute);
+				write(read_write->s, write_buffer, sizeof(write_buffer));
+			sem_post(read_write->w_mute);
 
 	
 			bzero(read_buffer, MAX);
@@ -342,9 +368,9 @@ void server_chat(int sockfd, int c) {
 
         // read the message from client and copy it in buffer 
 		
-		sem_post(&r_mutex);
-			read(sockfd, read_buff, sizeof(read_buff)); 
 		sem_wait(&r_mutex);
+			read(sockfd, read_buff, sizeof(read_buff)); 
+		sem_post(&r_mutex);
 
 		if (strncmp(read_buff, "\0", 2) == 0) { 
 			strcpy(answer_buff, "\0");
@@ -352,7 +378,7 @@ void server_chat(int sockfd, int c) {
 
 		//printf("client sent: %s", read_buff);
 		
-		if (strncmp(read_buff, "s", 1) != 0) { 
+		if (strncmp(read_buff, "s", 1) != 0 && strncmp(read_buff, "d", 1) != 0) { 
 			printf(RED);
 				printf("client sent: %s", read_buff);
 			printf(RESET);
@@ -367,6 +393,8 @@ void server_chat(int sockfd, int c) {
 		
 		if(argc >= 2){
 			channel_id = is_numeric(argv[1]);
+		} else {
+			channel_id = -1;
 		}
 
 		// if msg contains "Exit" then server exit and chat ended. 
@@ -391,24 +419,27 @@ void server_chat(int sockfd, int c) {
 
 			//Reading LIVEFEED
 			if(new_client->head == NULL){
-				printf("No Dice?\n");
+				//printf("No Dice?\n");
 				//Cant LiveFeed, Answers with N
 				strcpy(answer_buff, "N");
 				*read_write->live_flag_ptr = 0;
 				*read_write->live_ptr = 0;
 			} else {
-				printf("Going Live!\n");
+				//printf("Going Live!\n");
 				//confirming with the client to start livefeed
+
+				*read_write->live_flag_ptr = 1;
+				*read_write->live_ptr = 1;
+
 				strcpy(answer_buff, "R");
 
-				sem_post(&w_mutex);
-					write(sockfd, answer_buff, sizeof(answer_buff));
 				sem_wait(&w_mutex);
+					write(sockfd, answer_buff, sizeof(answer_buff));
+				sem_post(&w_mutex);
 
 				bzero(answer_buff, MAX);
 				bzero(read_buff, MAX);
-				*read_write->live_flag_ptr = 1;
-				*read_write->live_ptr = 1;
+
 				continue;
 			}
 
@@ -418,17 +449,23 @@ void server_chat(int sockfd, int c) {
 			if(argc != 3){
 				wrong_args(answer_buff);
 			} else {
-							
-				channel *cur_channel = &memptr->channels[channel_id];
+				
+				// Cant Send a message to -1 ok...
+				if(channel_id < 0 || channel_id > 254){
+					strcpy(answer_buff, "Please Use Numerical Values 0 to 254.\n");
+				} else {
+					channel *cur_channel = &memptr->channels[channel_id];
 
-				remove_substring(argv[2], "\n");
-				strcpy(cur_channel->posts[cur_channel->post_index++].message, argv[2]);
+					remove_substring(argv[2], "\n");
+					strcpy(cur_channel->posts[cur_channel->post_index++].message, argv[2]);
 
-				char message[25] = {"Client #"};
-				cancat_int(message, c);
-				strcat(message, ": ");
-				strcat(message, read_buff);
-				strcpy(answer_buff, "\0");
+					char message[25] = {"Client #"};
+					cancat_int(message, c);
+					strcat(message, ": ");
+					strcat(message, read_buff);
+					strcpy(answer_buff, "\0");
+				}			
+
 			}
 
 		} else if (strncmp(argv[0], "CHANNELS", 8) == 0) { 
@@ -513,9 +550,9 @@ void server_chat(int sockfd, int c) {
 
 		
 		
-		sem_post(&w_mutex);
-			write(sockfd, answer_buff, sizeof(answer_buff));
 		sem_wait(&w_mutex);
+			write(sockfd, answer_buff, sizeof(answer_buff));
+		sem_post(&w_mutex);
 		
 
 		bzero(answer_buff, MAX);
