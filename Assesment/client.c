@@ -86,7 +86,7 @@ void* livefeed(void* struct_pass){
 
 	while(*read_write->sig_flag_ptr){
 			while (*read_write->live_ptr){
-				sleep(1);
+				
 				strcpy(read_write->w_buff, "s");
 
 				if (live_flag == 0){
@@ -95,14 +95,19 @@ void* livefeed(void* struct_pass){
 				}
 				
 				sem_post(read_write->w_mute);
-					write(read_write->socket, read_write->w_buff, read_write->r_size);		
+					write(read_write->socket, read_write->w_buff, read_write->w_size);		
 				sem_wait(read_write->w_mute);
 
 				sem_post(read_write->r_mute);
-					read(read_write->socket, read_write->r_buff, read_write->w_size);
+					read(read_write->socket, read_write->r_buff, read_write->r_size);
 				sem_wait(read_write->r_mute);
 
-				if (strncmp(read_write->r_buff, "\0", 2) != 0){
+				
+				if (strncmp(read_write->r_buff, "nc", 2) == 0){
+					//*read_write->live_flag_ptr = 0;
+					*read_write->live_flag_ptr = 0;
+					*read_write->live_ptr = 0;
+				} else if (strncmp(read_write->r_buff, "\0", 2) != 0){
 					printf(YELLOW);
 						printf("%s\n", read_write->r_buff);
 					printf(RESET);
@@ -110,6 +115,7 @@ void* livefeed(void* struct_pass){
 
 			bzero(read_write->w_buff, MAX);
 			bzero(read_write->r_buff, MAX);	
+			sleep(1);
 		}
 	}
 
@@ -174,7 +180,7 @@ void client_chat(int sockfd)
 			break;
 		} else if ((strncmp(w_buff, "LIVEFEED", 8)) == 0 && !live_flag){
 			//say LIVEFEED
-
+		
 			sem_post(&w_mutex);
 				write(sockfd, w_buff, sizeof(w_buff));
 			sem_wait(&w_mutex);
@@ -193,6 +199,7 @@ void client_chat(int sockfd)
 				live = 0;
 			}
 			else {
+				printf("Going live\n");
 				live_flag = 1;	
 				live = 1;
 			}
@@ -262,6 +269,11 @@ void client_chat(int sockfd)
 			bzero(r_buff, MAX);
 			bzero(w_buff, MAX);
 			continue;
+		} else if ((strncmp(w_buff, "STOP", 4)) == 0){
+			if(live_flag){
+				printf("Stopping Livefeed.\n");
+				live_flag = 0;
+			}
 		}
 
 		sem_post(&w_mutex);

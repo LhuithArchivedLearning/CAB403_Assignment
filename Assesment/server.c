@@ -214,22 +214,19 @@ void* livefeed(void* struct_pass){
 
 	char m[32] = "";
 
+
 	//keep running
 	//and when the flags align, run the livefeed
 	while(*read_write->sig_flag_ptr){
 			while(*read_write->live_ptr){
+
+
+			if(cursor == NULL && read_write->c->head != NULL){
+				printf("Assigning i guess?\n");
+				cursor = read_write->c->head;
+			} 
 			
-			sleep(1);
-
-			if(cursor == NULL){
-				if(read_write->c->head != NULL){
-					cursor = read_write->c->head;
-				}
-			} else {
-				
-			}
-
-		//now read, then write
+			//now read, then write
 			sem_post(read_write->r_mute);
 				read(read_write->s, read_buffer, sizeof(read_buffer));
 			sem_wait(read_write->r_mute);
@@ -239,7 +236,9 @@ void* livefeed(void* struct_pass){
 				printf(YELLOW);
 					//printf("thread %u getting\n", *read_write->tid);
 				printf(RESET);
-			} else if (strncmp(read_buffer, "d", 1) == 0){
+			}
+			
+			if (strncmp(read_buffer, "d", 1) == 0){
 				printf("thread %u exiting s\n", *read_write->tid);
 				*read_write->live_ptr = 0;	
 			}
@@ -249,31 +248,43 @@ void* livefeed(void* struct_pass){
 		
 			}
 			
-	
-			channel *cur_channel = &read_write->memptr->channels[cursor->channel_id];
-		
-			if(cursor->read_index < cur_channel->post_index){
-					memset(m, 0, sizeof(m)); //clear message buffer
-					cancat_int(m, cursor->channel_id);
-					strcat(m, ":");
-					strcat(m, cur_channel->posts[cursor->read_index++].message);
-					strcpy(write_buffer, m);
+			if(cursor != NULL && read_write->c->head != NULL){
+				printf("working i guess?\n");
 				
+				channel *cur_channel = &read_write->memptr->channels[cursor->channel_id];
+			
+				if(cursor->read_index < cur_channel->post_index){
+						memset(m, 0, sizeof(m)); //clear message buffer
+						cancat_int(m, cursor->channel_id);
+						strcat(m, ":");
+						strcat(m, cur_channel->posts[cursor->read_index++].message);
+						strcpy(write_buffer, m);
+				
+				printf("working after i guess?\n");
+
+				} else {
+					strcpy(write_buffer, "\0");
+				}
+
+				if(cursor->next != NULL){cursor = cursor->next;} else {cursor = read_write->c->head;}
+			
 			} else {
-				strcpy(write_buffer, "\0");
+				printf("no channels :| %d.\n", *read_write->live_flag_ptr);
+				strcpy(write_buffer, "nc");
+				cursor = NULL;
+				*read_write->live_ptr = 0;
+				*read_write->live_flag_ptr = 0;
 			}
 			
 			sem_post(read_write->w_mute);
 				write(read_write->s, write_buffer, sizeof(write_buffer));
 			sem_wait(read_write->w_mute);
 
-			if(cursor->next != NULL){cursor = cursor->next;} else {cursor = read_write->c->head;}
-			
+	
 			bzero(read_buffer, MAX);
 			bzero(write_buffer, MAX);
-
+			sleep(1);
 		}
-
 	}
 
 	printf("exiting.\n");
@@ -323,6 +334,7 @@ void server_chat(int sockfd, int c) {
 
     // infinite loop for chat 
     while (sig_flag) { 
+
         bzero(read_buff, MAX); 
 		bzero(answer_buff, MAX);
 		
@@ -340,15 +352,15 @@ void server_chat(int sockfd, int c) {
 
 		//printf("client sent: %s", read_buff);
 		
-		if (strncmp(read_buff, "s", 1) == 0) { 
-			strcpy(answer_buff, "\0");
-		} else {
+		if (strncmp(read_buff, "s", 1) != 0) { 
 			printf(RED);
 				printf("client sent: %s", read_buff);
 			printf(RESET);
+		} else {
+			strcpy(answer_buff, "\0");
 		}
 
-		printf("client sent: %s", read_buff);
+		//printf("client sent: %s", read_buff);
 
 		// print buffer which contains the client contents 
 		argc = parse_input(read_buff, " ", argv);
@@ -379,10 +391,13 @@ void server_chat(int sockfd, int c) {
 
 			//Reading LIVEFEED
 			if(new_client->head == NULL){
+				printf("No Dice?\n");
 				//Cant LiveFeed, Answers with N
 				strcpy(answer_buff, "N");
+				*read_write->live_flag_ptr = 0;
+				*read_write->live_ptr = 0;
 			} else {
-
+				printf("Going Live!\n");
 				//confirming with the client to start livefeed
 				strcpy(answer_buff, "R");
 
@@ -392,7 +407,7 @@ void server_chat(int sockfd, int c) {
 
 				bzero(answer_buff, MAX);
 				bzero(read_buff, MAX);
-
+				*read_write->live_flag_ptr = 1;
 				*read_write->live_ptr = 1;
 				continue;
 			}
@@ -487,7 +502,14 @@ void server_chat(int sockfd, int c) {
 				}
 				continue;
 			}
-		} 
+		} else if (strncmp(argv[0], "STOP", 4) == 0){
+			if(live_flag){
+				printf("Stopping Livefeed.\n");
+				live_flag = 0;
+			} else {
+				strcpy(answer_buff, "\0");
+			}
+		}
 
 		
 		
