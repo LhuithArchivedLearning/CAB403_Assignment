@@ -267,12 +267,11 @@ void* livefeed_thread(void* struct_pass){
 				sleep(1);
 				//read
 				
-				//sem_wait(&mutex);
-					read(read_write->socket, r_buff, sizeof(r_buff));
-				//sem_post(&mutex);
 
-				printf("%s\n", r_buff);
-				
+				read(read_write->socket, read_write->r_buff, read_write->r_size);
+			
+					printf("%s\n", read_write->r_buff);
+
 				//write
 				strcpy(w_buff, "w");
 				
@@ -434,6 +433,7 @@ void* next_thread(void* struct_pass){
 	subbed_channel* sub_tmp = NULL;
 
 	char message[32] = {""};
+	char w_buff[MAX];
 
 	while(sig_flag){
 		if(*read_write->next_flag_ptr){
@@ -442,48 +442,55 @@ void* next_thread(void* struct_pass){
 				sub_tmp = read_write->c->head;
 			} 
 
-			//if they give me a number
-			if(*read_write->id > 0){
-				sub_tmp = search(read_write->c->head, *read_write->id);
-
-				if(sub_tmp == NULL){
-					strcpy(message, "Not subscribed to channel ");
-					cancat_int(message, *read_write->id);
-				} else {
-					channel *cur_channel = &memptr->channels[*read_write->id];
+			if(read_write->c->head != NULL){
+				//if they gave me a number
+				if(*read_write->id != -1){
 					
-					cancat_int(message, *read_write->id);
-					strcat(message, ":");
-				
-					if(sub_tmp->read_index < cur_channel->post_index){
-						strcat(message, cur_channel->posts[sub_tmp->read_index++].message);
-					} else {			
-						strcat(message, "No New Messages");
-					}	
-				}
-			} else {
-				printf("%s", "Getting Next Message I GUESS!.");
-				sub_tmp = read_write->c->head;//search(c->head, id);
+					sub_tmp = search(read_write->c->head, *read_write->id);
 
-				while(sub_tmp != NULL){
-
-					channel *cur_channel = &memptr->channels[sub_tmp->channel_id];	
-
-					if(sub_tmp->read_index < cur_channel->post_index){
-						cancat_int(message, sub_tmp->channel_id);
+					if(sub_tmp == NULL){
+						strcpy(message, "Not subscribed to channel ");
+						cancat_int(message, *read_write->id);
+						
+					} else {
+						channel *cur_channel = &memptr->channels[*read_write->id];
+						
+						cancat_int(message, *read_write->id);
 						strcat(message, ":");
-						strcat(message, cur_channel->posts[sub_tmp->read_index++].message);
-						break;
-					} else {			
-						sub_tmp = sub_tmp->next;
+					
+						if(sub_tmp->read_index < cur_channel->post_index){
+							strcat(message, cur_channel->posts[sub_tmp->read_index++].message);
+						} else {			
+							strcat(message, "No New Messages");
+						}
+
+					}
+					strcat(message, "\n");
+				} else {
+					printf("%s", "Getting Next Message I GUESS!.");
+					//sub_tmp = read_write->c->head;//search(c->head, id);
+
+					while(sub_tmp != NULL){
+
+						channel *cur_channel = &memptr->channels[sub_tmp->channel_id];	
+
+						if(sub_tmp->read_index < cur_channel->post_index){
+							cancat_int(message, sub_tmp->channel_id);
+							strcat(message, ":");
+							strcat(message, cur_channel->posts[sub_tmp->read_index++].message);
+							break;
+						} else {			
+							sub_tmp = sub_tmp->next;
+						}
 					}
 				}
+			} else {
+				strcpy(message , "Not subscribed to channels.");	
 			}
 
-			strcat(message, "\n");
 			strcpy(read_write->w_buff, message);
 
-			write(read_write->socket, read_write->w_buff, read_write->w_size);
+			write(read_write->socket, w_buff, sizeof(w_buff));
 
 			*read_write->next_flag_ptr = 0;
 		}
@@ -551,14 +558,11 @@ void server_chat(int sockfd, int c) {
 		strcpy(answer_buff, "Input Not Found.\n");
 
         // read the message from client and copy it in buffer 
-		//sem_wait(&mutex);
-			read(sockfd, read_buff, sizeof(read_buff)); 
-		//sem_post(&mutex);	
+		read(sockfd, read_buff, sizeof(read_buff)); 
 
-		if (strncmp(read_buff, "s", 2) == 0) { 
+		if (strncmp(read_buff, "", 1) == 0) { 
 			strcpy(answer_buff, "w");
 		}
-
 		//printf("client sent: %s", read_buff);
 		
 		printf(RED);
@@ -601,6 +605,9 @@ void server_chat(int sockfd, int c) {
 				*read_write->next_flag_ptr = 1;
 			}
 			
+			bzero(answer_buff, MAX);
+			bzero(read_buff, MAX);
+			continue;
 		} else if (strncmp(argv[0],"LIVEFEED", 8) == 0  && !live_flag) {
 
 			//Reading LIVEFEED

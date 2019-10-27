@@ -34,6 +34,7 @@ typedef struct socket_info_struct
 volatile sig_atomic_t sig_flag = 1;
 volatile sig_atomic_t live_flag = 0;
 volatile sig_atomic_t live = 0;
+volatile sig_atomic_t next_flag = 0;
 
 void sigint_handler(int sig)
 {
@@ -73,6 +74,8 @@ struct read_write_struct{
 	volatile sig_atomic_t *sig_flag_ptr;
 	volatile sig_atomic_t *live_flag_ptr;
 	volatile sig_atomic_t *live_ptr;
+
+	volatile sig_atomic_t *next_flag_ptr;
 };
 
 pthread_mutex_t r_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -107,7 +110,8 @@ void* livefeed_thread(void* struct_pass){
 			sleep(1);
 
 			//write
-			strcpy(w_buff, "s");
+
+			//strcpy(read_write->w_buff, "s");
 
 			if (live_flag == 0){
 				strcpy(w_buff, "d");
@@ -115,8 +119,7 @@ void* livefeed_thread(void* struct_pass){
 			}
 
 			//sem_wait(&mutex);
-				write(read_write->socket, w_buff, sizeof(w_buff));
-			//sem_post(&mutex);
+			write(read_write->socket, read_write->w_buff, read_write->w_size);
 
 			//read
 			read(read_write->socket, r_buff, sizeof(r_buff));
@@ -184,9 +187,34 @@ void* livefeed(void* struct_pass){
 	pthread_exit(0);
 }
 
+
+void* next_thread(void* struct_pass){
+	
+	//printf("id : %d\n", id);
+	struct read_write_struct *read_write = (struct read_write_struct*) struct_pass;
+
+	//subbed_channel* sub_tmp = NULL;
+
+	char message[32] = {""};
+	char r_buff[MAX];
+
+	while(sig_flag){
+		if(*read_write->next_flag_ptr){
+			
+			printf("balls");
+			read(read_write->socket, r_buff, sizeof(r_buff));
+			printf("%s", r_buff);
+
+			*read_write->next_flag_ptr = 0;
+		}
+	}
+
+	pthread_exit(0);
+}
+
 void client_chat(int sockfd)
 {
-	pthread_t live_tid;
+	pthread_t live_tid, next_tid;
 	sem_t w_mutex;
 	sem_t r_mutex;
 	sem_t o_mutex;
@@ -217,13 +245,17 @@ void client_chat(int sockfd)
 	read_write->sig_flag_ptr = &sig_flag;
 	read_write->live_flag_ptr = &live_flag;
 	read_write->live_ptr = &live;
+	read_write->next_flag_ptr = &next_flag;
 
 	pthread_attr_t attr;
 	pthread_attr_init(&attr);
 	pthread_create(&live_tid, &attr, livefeed_thread, read_write);
 	
 //----------------- LIVE FEED ----------------------------
-
+	
+	pthread_attr_t next_attr;
+	pthread_attr_init(&next_attr);
+	pthread_create(&next_tid, &next_attr, next_thread, read_write);
 	
 	char* argv[5];
 	char parse_string[MAX];
@@ -344,6 +376,10 @@ void client_chat(int sockfd)
 				//printf("Stopping Livefeed.\n");
 				live_flag = 0;
 			}
+		} else if ((strncmp(w_buff, "NEXT", 4)) == 0){
+			//write(sockfd, w_buff, sizeof(w_buff));
+			//printf("doing it");
+			//next_flag = 1;
 		}
 //
 		//sem_wait(&mutex);
@@ -381,6 +417,7 @@ void client_chat(int sockfd)
 	free(read_write);
 	printf("Threads %u closing.\n", live_tid);
 	pthread_join(live_tid, NULL);
+	pthread_join(next_tid, NULL);
 	sem_destroy(&mutex);
 
 }
