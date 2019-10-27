@@ -350,7 +350,7 @@ void client_chat(int sockfd)
 			write(sockfd, w_buff, sizeof(w_buff));
 		//sem_post(&mutex);
 
-		//bzero(buff, MAX);
+
 
 		if (f = read(sockfd, r_buff, sizeof(r_buff)) == -1){
 			printf("%s", "Lost Connection.\n");
