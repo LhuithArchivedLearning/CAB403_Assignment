@@ -6,7 +6,7 @@
 #include <stdio.h> 
 #include <stdlib.h> 
 #include <errno.h> 
-#include <string.h> 
+#include <strings.h> 
 #include <sys/types.h> 
 #include <netinet/in.h> 
 #include <sys/socket.h> 
@@ -14,9 +14,10 @@
 #include <unistd.h> 
 #include <ctype.h>
 #include <sys/mman.h>
-#include <signal.h>
+
 #include <pthread.h>
 #include <semaphore.h>
+#include <signal.h>
 
 #include "printf_helper.h"
 #include "shared_mem_struct.h"
@@ -24,7 +25,7 @@
 #include "subscriber_struct.h"
 #include "subscriber.h"
 #include "helper.h"
-
+#define h_addr h_addr_list[0]
 //#define MYPORT 54321    /* the port users will be connecting to */
 #define BACKLOG 10     /* how many pending connections queue will hold */
 #define MAX 80 
@@ -366,12 +367,12 @@ void* livefeed(void* struct_pass){
 			//stream read, if stream is broken please stapt after
 			if(strncmp(read_buffer, "s", 1) == 0){
 				printf(YELLOW);
-					//printf("thread %u getting\n", *read_write->tid);
+					//printf("thread %lu getting\n", *read_write->tid);
 				printf(RESET);
 			}
 			
 			if (strncmp(read_buffer, "d", 1) == 0){
-				printf("thread %u exiting s\n", *read_write->tid);
+				printf("thread %lu exiting s\n", *read_write->tid);
 				//cursor = NULL;
 				*read_write->live_ptr = 0;
 				*read_write->live_flag_ptr = 0;
@@ -542,12 +543,12 @@ void server_chat(int sockfd, int c) {
 	pthread_attr_t attr;
 	pthread_attr_init(&attr);
 	pthread_create(&live_tid, &attr, livefeed_thread, read_write);
-	printf("Live Thread %u created.\n", live_tid);
+	printf("Live Thread %lu created.\n", live_tid);
 
 	pthread_attr_t next_attr;
 	pthread_attr_init(&next_attr);
 	pthread_create(&next_tid, &next_attr, next_thread, read_write);
-	printf("Next Thread %u created.\n", next_tid);
+	printf("Next Thread %lu created.\n", next_tid);
 
     // infinite loop for chat 
     while (sig_flag) { 
@@ -691,7 +692,7 @@ void server_chat(int sockfd, int c) {
 				bzero(answer_buff, MAX);
 				bzero(read_buff, MAX);
 
-				while(channel_live){
+				while(channel_live && sig_flag){
 					//now read, then write
 					
 					//sem_wait(&r_mutex);
@@ -714,7 +715,7 @@ void server_chat(int sockfd, int c) {
 						
 						channel *cur_channel = &memptr->channels[cursor->channel_id];
 
-						memset(m, 0, sizeof(m)); //clear message buffer
+						bzero(m, sizeof(m)); //clear message buffer
 						cancat_int(m, cursor->channel_id);
 						strcat(m, ":");
 						strcat(m, "\t");
@@ -771,7 +772,7 @@ void server_chat(int sockfd, int c) {
 	free(read_write);
 	free(new_client);
 
-	printf("Threads %u closing.\n", live_tid);
+	printf("Threads %lu closing.\n", live_tid);
 	pthread_join(live_tid, NULL);
 	pthread_join(next_tid, NULL);
 	sem_destroy(&mutex);

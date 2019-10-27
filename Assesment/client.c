@@ -1,19 +1,19 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <errno.h>
-#include <string.h>
+#include <strings.h>
 #include <netdb.h>
 #include <sys/types.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
-#include <signal.h>
+
 #include <pthread.h>
 #include <semaphore.h>
-
+#include <signal.h>
 #include "printf_helper.h"
 #include "helper.h"
-
+#define h_addr h_addr_list[0]
 //#define PORT 54321    /* the port client will be connecting to */
 #define MAXDATASIZE 100 /* max number of bytes we can get at once */
 
@@ -290,7 +290,7 @@ void client_chat(int sockfd)
 				live_flag = 0;
 				live = 0;
 			} else if (strncmp(r_buff, "C", 2) == 0){
-				char m[10]= "";
+				char m[32]= "";
 
 				strcpy(m, "Not subscribed to channel ");
 				cancat_int(m, atoi(argv[1]));
@@ -337,7 +337,7 @@ void client_chat(int sockfd)
 				//live_flag = 1;
 			}
 
-			while (channel_live){
+			while (channel_live && sig_flag){
 
 				strcpy(w_buff, "s");
 
@@ -415,7 +415,7 @@ void client_chat(int sockfd)
 	bzero(w_buff, MAX);
 	//sem_destroy(&mutex);
 	free(read_write);
-	printf("Threads %u closing.\n", live_tid);
+	printf("Threads %lu closing.\n", live_tid);
 	pthread_join(live_tid, NULL);
 	pthread_join(next_tid, NULL);
 	sem_destroy(&mutex);
@@ -436,7 +436,7 @@ int main(int argc, char *argv[]){
 
 	if ((he = gethostbyname(argv[1])) == NULL)
 	{ /* get the host info */
-		herror("gethostbyname");
+		perror("gethostbyname");
 		exit(1);
 	}
 
