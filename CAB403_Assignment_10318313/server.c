@@ -14,7 +14,6 @@
 #include <unistd.h> 
 #include <ctype.h>
 #include <sys/mman.h>
-
 #include <pthread.h>
 #include <semaphore.h>
 #include <signal.h>
@@ -25,6 +24,8 @@
 #include "subscriber_struct.h"
 #include "subscriber.h"
 #include "helper.h"
+#include "worker.h"
+
 #define h_addr h_addr_list[0]
 //#define MYPORT 54321    /* the port users will be connecting to */
 #define BACKLOG 10     /* how many pending connections queue will hold */
@@ -91,7 +92,6 @@ void subscribe(client* c, int id, char buff[]){
 		if(sub_tmp != NULL){
 			strcpy(message, "Already Subscribed to ");
 			cancat_int(message, c->head->channel_id);
-			strcat(message, "\n");
 			strcpy(buff, message);
 			return;
 		}
@@ -104,7 +104,6 @@ void subscribe(client* c, int id, char buff[]){
 
 		cancat_int(message, c->head->channel_id);
 
-		strcat(message, "\n");
 		strcpy(buff, message);
 }
 
@@ -130,11 +129,8 @@ void unsubscribe(client* c, int id, char buff[]){
 
 	cancat_int(message, id);
 
-	strcat(message, "\n");
 	strcpy(buff, message);			
 }
-
-
 
 void next(client* c, int id, char buff[]){
 	//printf("id : %d\n", id);
@@ -210,75 +206,77 @@ void Channels(client* c, int id, int socket, char reader[]){
 
 struct read_write_struct{
 	client *c;
+	worker *w;
 	struct memory* memptr;
-	int *id;
-	pthread_t *tid;
-
-	char *w_buff;
-	char *r_buff;
-
-	size_t w_size;
-	size_t r_size;
-
-	sem_t *w_mute; //mutex for writing
-	sem_t *r_mute; //mutex for reading
-	sem_t *o_mute; //mutex for stdout
-	
+	int live_id;
+	int next_id;
 	int socket;
 
+	
 	volatile sig_atomic_t *sig_flag_ptr;
 	volatile sig_atomic_t *live_flag_ptr;
 	volatile sig_atomic_t *live_ptr;
-
 	volatile sig_atomic_t *next_flag_ptr;
 };
 
-//pthread_mutex_t r_mutex = PTHREAD_MUTEX_INITIALIZER;
-//pthread_mutex_t w_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 sem_t mutex;
+pthread_mutex_t p_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-void locked_cpy(char b[], char m[]){
-	//pthread_mutex_lock(&w_mutex);
-		strcpy(b, m);
-	//pthread_mutex_unlock(&w_mutex);
+//read worker jobs and send them to client
+void* poster_thread(void* struct_pass){
+	
+	struct read_write_struct *read_write = (struct read_write_struct*) struct_pass;
+
+	char w_buff[MAX];
+	char m[32] = "";
+	job *tmp_job = NULL;
+
+	while(sig_flag) {
+
+		if(tmp_job == NULL && read_write->w->head != NULL){tmp_job = read_write->w->head;} 
+
+	
+		if(tmp_job != NULL){
+		
+			strcpy(m, tmp_job->data);
+			printf("%s", tmp_job->data);
+			read_write->w->head = remove_job(read_write->w->head, tmp_job);
+			tmp_job = NULL;
+		
+		} else {
+			strcpy(m, "\0");
+		}
+			strcpy(w_buff, m);
+			write(read_write->socket, w_buff, sizeof(w_buff));
+			bzero(w_buff, MAX);
+	}
+
+	bzero(w_buff, MAX);
+	free(read_write);
+	free(tmp_job);
+	pthread_exit(0);
 }
-
 
 void* livefeed_thread(void* struct_pass){
 	
 	struct read_write_struct *read_write = (struct read_write_struct*) struct_pass;
 
-	char r_buff[MAX];
-	char w_buff[MAX];
 	char m[32] = "";
-	
-	bzero(r_buff, MAX);
-	bzero(w_buff, MAX);
 
 	subbed_channel* cursor;
 
 	while(sig_flag){
 		while (*read_write->live_ptr){
-
-			if(cursor == NULL && read_write->c->head != NULL){
-				cursor = read_write->c->head;
-			} 
+			//printf("anus.");
+			if(cursor == NULL && read_write->c->head != NULL){ cursor = read_write->c->head;} 
 			
 				sleep(1);
-				//read
-				
 
-				read(read_write->socket, read_write->r_buff, read_write->r_size);
-			
-					printf("%s\n", read_write->r_buff);
-
-				//write
-				strcpy(w_buff, "w");
-				
 				//meat and potatoes
-				if(*read_write->id < 0){
-					strcpy(w_buff, "reading from all.");
+				//pthread_mutex_lock(&p_mutex); 
+
+				if(read_write->live_id < 0){
 	
 					//---------------------------------------- READING ALL ---------------------------
 					if(cursor != NULL && read_write->c->head != NULL){
@@ -286,263 +284,176 @@ void* livefeed_thread(void* struct_pass){
 							channel *cur_channel = &read_write->memptr->channels[cursor->channel_id];
 						
 							if(cursor->read_index < cur_channel->post_index){
-									memset(m, 0, sizeof(m)); //clear message buffer
-									cancat_int(m, cursor->channel_id);
-									strcat(m, ":");
-									strcat(m, cur_channel->posts[cursor->read_index++].message);
-									strcpy(w_buff, m);
+								memset(m, 0, sizeof(m)); //clear message buffer
+								cancat_int(m, cursor->channel_id);
+								strcat(m, ":");
+								strcat(m, cur_channel->posts[cursor->read_index++].message);
 							} else {
-								strcpy(w_buff, "w");
+								strcpy(m, "\0");
 							}
 
 							if(cursor->next != NULL){cursor = cursor->next;} else {cursor = read_write->c->head;}
 						
 						} else {
-							////printf("no channels :| %d.\n", *read_write->live_flag_ptr);
-							//strcpy(write_buffer, "nc");
-							//cursor = NULL;
-							//*read_write->live_ptr = 0;
-							//*read_write->live_flag_ptr = 0;
+							read_write->w->head = job_prepend(read_write->w->head, 1, "No Channels.");
 						}
 					//---------------------------------------- READING ALL ---------------------------
-
 				} else {
-					channel *cur_channel = &memptr->channels[*read_write->id];
+					channel *cur_channel = &memptr->channels[read_write->live_id];
 					
-					cursor = search(read_write->c->head, *read_write->id);
+					cursor = search(read_write->c->head, read_write->live_id);
 
 					if(cursor->read_index < cur_channel->post_index){
 						memset(m, 0, sizeof(m)); //clear message buffer
-						cancat_int(m, *read_write->id);
+						cancat_int(m, read_write->live_id);
 						strcat(m, ":");
 						strcat(m, cur_channel->posts[cursor->read_index++].message);
-						strcpy(w_buff, m);
 					} else {			
-						strcpy(w_buff, "w");
+						strcpy(m, "\0");
 					}	
 				}
 
-				if(strncmp(r_buff, "d", 1) == 0){
-					*read_write->live_ptr = 0;
-					*read_write->live_flag_ptr = 0;
-					strcpy(w_buff, "z");
-				}
-
-				write(read_write->socket, w_buff, sizeof(w_buff));
-
-				bzero(r_buff, MAX);
-				bzero(w_buff, MAX);
+			
+				read_write->w->head = job_prepend(read_write->w->head, 1, m);
+				//pthread_mutex_unlock(&p_mutex); 
 			}
 		}
-}
 
-void* livefeed(void* struct_pass){
-
-	struct read_write_struct *read_write = (struct read_write_struct*) struct_pass;
-
-	char read_buffer[MAX];
-	char write_buffer[MAX];
-
-	subbed_channel* cursor = read_write->c->head;
-
-	char m[32] = "";
-
-
-	//keep running
-	//and when the flags align, run the livefeed
-	while(*read_write->sig_flag_ptr){
-			while(*read_write->live_ptr){
-
-
-			if(cursor == NULL && read_write->c->head != NULL){
-				//printf("Assigning i guess?\n");
-				cursor = read_write->c->head;
-			} 
-			
-			//now read, then write
-			sem_wait(read_write->r_mute);
-				read(read_write->socket, read_buffer, sizeof(read_buffer));
-			sem_post(read_write->r_mute);
-
-			//stream read, if stream is broken please stapt after
-			if(strncmp(read_buffer, "s", 1) == 0){
-				printf(YELLOW);
-					//printf("thread %lu getting\n", *read_write->tid);
-				printf(RESET);
-			}
-			
-			if (strncmp(read_buffer, "d", 1) == 0){
-				printf("thread %lu exiting s\n", *read_write->tid);
-				//cursor = NULL;
-				*read_write->live_ptr = 0;
-				*read_write->live_flag_ptr = 0;
-			}
-
-			//Handling SIG
-			if(strncmp(read_buffer, "SIG", 3) == 0){
-		
-			}
-			
-			if(cursor != NULL && read_write->c->head != NULL){
-				//printf("working i guess?\n");
-				
-				channel *cur_channel = &read_write->memptr->channels[cursor->channel_id];
-			
-				if(cursor->read_index < cur_channel->post_index){
-						memset(m, 0, sizeof(m)); //clear message buffer
-						cancat_int(m, cursor->channel_id);
-						strcat(m, ":");
-						strcat(m, cur_channel->posts[cursor->read_index++].message);
-						strcpy(write_buffer, m);
-				
-				//printf("working after i guess?\n");
-
-				} else {
-					strcpy(write_buffer, "\0");
-				}
-
-				if(cursor->next != NULL){cursor = cursor->next;} else {cursor = read_write->c->head;}
-			
-			} else {
-				//printf("no channels :| %d.\n", *read_write->live_flag_ptr);
-				strcpy(write_buffer, "nc");
-				cursor = NULL;
-				*read_write->live_ptr = 0;
-				*read_write->live_flag_ptr = 0;
-			}
-			
-			sem_wait(read_write->w_mute);
-				write(read_write->socket, write_buffer, sizeof(write_buffer));
-			sem_post(read_write->w_mute);
-
-	
-			bzero(read_buffer, MAX);
-			bzero(write_buffer, MAX);
-			sleep(1);
-		}
-	}
-
-	printf("exiting.\n");
+	free(read_write);
+	free(cursor);
 	pthread_exit(0);
 }
 
 void* next_thread(void* struct_pass){
 	
-	//printf("id : %d\n", id);
 	struct read_write_struct *read_write = (struct read_write_struct*) struct_pass;
 
-	subbed_channel* sub_tmp = NULL;
+	subbed_channel* cursor = NULL;
 
-	char message[32] = {""};
-	char w_buff[MAX];
+	char m[MAX] = "";
 
 	while(sig_flag){
 		if(*read_write->next_flag_ptr){
 
-			if(sub_tmp == NULL && read_write->c->head != NULL){
-				sub_tmp = read_write->c->head;
-			} 
+			bzero(m, MAX);
+			//sleep(1);
+			if(cursor == NULL && read_write->c->head != NULL){
+				cursor = read_write->c->head;
+			} else {
+				*read_write->next_flag_ptr = 0;
+				printf("Head is null :(\n");
+				break;
+			}  
 
-			if(read_write->c->head != NULL){
-				//if they gave me a number
-				if(*read_write->id != -1){
-					
-					sub_tmp = search(read_write->c->head, *read_write->id);
+			printf("NEXTING\n");
+			
 
-					if(sub_tmp == NULL){
-						strcpy(message, "Not subscribed to channel ");
-						cancat_int(message, *read_write->id);
-						
-					} else {
-						channel *cur_channel = &memptr->channels[*read_write->id];
-						
-						cancat_int(message, *read_write->id);
-						strcat(message, ":");
-					
-						if(sub_tmp->read_index < cur_channel->post_index){
-							strcat(message, cur_channel->posts[sub_tmp->read_index++].message);
-						} else {			
-							strcat(message, "No New Messages");
-						}
-
-					}
-					strcat(message, "\n");
+			if(read_write->next_id == -1){
+				
+				if(read_write->c->head == NULL){
+					printf("Cursor is null :(\n");
 				} else {
-					printf("%s", "Getting Next Message I GUESS!.");
-					//sub_tmp = read_write->c->head;//search(c->head, id);
+					
 
-					while(sub_tmp != NULL){
+					while(1){
+						
+						if(cursor == NULL){strcpy(m, "no new message."); break;}
 
-						channel *cur_channel = &memptr->channels[sub_tmp->channel_id];	
+						channel *cur_channel = &read_write->memptr->channels[cursor->channel_id];
 
-						if(sub_tmp->read_index < cur_channel->post_index){
-							cancat_int(message, sub_tmp->channel_id);
-							strcat(message, ":");
-							strcat(message, cur_channel->posts[sub_tmp->read_index++].message);
+						if(cursor->read_index < cur_channel->post_index){
+							memset(m, 0, sizeof(m)); //clear message buffer
+							cancat_int(m, cursor->channel_id);
+							strcat(m, ":");
+							strcat(m, cur_channel->posts[cursor->read_index++].message);
 							break;
-						} else {			
-							sub_tmp = sub_tmp->next;
+						} else {
+							cursor = cursor->next;
 						}
+					}
+				
+				}
+
+
+			} else {
+				
+				cursor = search(read_write->c->head, read_write->next_id);
+
+				if(cursor == NULL){
+					strcpy(m, "No Channels");
+				} else {
+					channel *cur_channel = &read_write->memptr->channels[read_write->next_id];
+
+					if(cursor->read_index < cur_channel->post_index){
+						memset(m, 0, sizeof(m)); //clear message buffer
+						cancat_int(m, cursor->channel_id);
+						strcat(m, ":");
+						strcat(m, cur_channel->posts[cursor->read_index++].message);
+					} else {
+						strcpy(m, "no new message.");
 					}
 				}
-			} else {
-				strcpy(message , "Not subscribed to channels.");	
+
 			}
 
-			strcpy(read_write->w_buff, message);
-
-			write(read_write->socket, w_buff, sizeof(w_buff));
+			read_write->w->head = job_prepend(read_write->w->head, 1, m);
 
 			*read_write->next_flag_ptr = 0;
+			cursor = NULL;
 		}
 	}
 
+	free(read_write);
+	free(cursor);
 	pthread_exit(0);
 }
-
+	
 
 void server_chat(int sockfd, int c) { 
 
     char read_buff[MAX]; 
 	char answer_buff[MAX];
 	char* argv[5];
-	int argc, channel_id = 0;
+	int argc, channel_id = 0, num_jobs = 0;
 	
-	pthread_t live_tid, next_tid;
+	pthread_t poster_tid, live_tid, next_tid;
 	//sem_t r_mutex;
 	//sem_t w_mutex;
 	
+	//-------------- Client Struct -------------------------
 	client* new_client = malloc(sizeof(client));
 	new_client->client_id = c;
 	new_client->head = NULL;
-	subbed_channel* tmp = NULL;
 	subbed_channel *cursor = NULL;
+	//-------------- Client Struct -------------------------
+
+	//-------------- Worker Struct ------------------------
+	worker* new_worker = malloc(sizeof(worker));
+	new_worker->head = NULL;
+	//-------------- Worker Struct ------------------------
 
 	printf("Client ID is: %d\n", new_client->client_id);
 
 	//sem_init(&r_mutex, 1, 1);
- 	sem_init(&mutex, 0, 1);
+ 	//sem_init(&mutex, 0, 1);
 	 
 	struct read_write_struct *read_write = malloc(sizeof(struct read_write_struct));
 
 	//populating the struct with read/write information
 	read_write->c = new_client;
-	read_write->id = &channel_id;
+	read_write->w = new_worker;
+	
 	read_write->socket = sockfd;
 	read_write->memptr = memptr;
-	read_write->tid = &live_tid;
 	read_write->sig_flag_ptr = &sig_flag;
 	read_write->live_flag_ptr = &live_flag;
 	read_write->live_ptr = &live;
-	read_write->r_size = sizeof(read_buff);
-	read_write->w_size = sizeof(answer_buff);
-	read_write->next_flag_ptr = &next_flag;
-	read_write->w_buff = answer_buff;
-	read_write->r_buff = read_buff;
+	read_write->next_flag_ptr = &next_flag;	
 
-	pthread_attr_t attr;
-	pthread_attr_init(&attr);
-	pthread_create(&live_tid, &attr, livefeed_thread, read_write);
+
+	pthread_attr_t live_attr;
+	pthread_attr_init(&live_attr);
+	pthread_create(&live_tid, &live_attr, livefeed_thread, read_write);
 	printf("Live Thread %lu created.\n", live_tid);
 
 	pthread_attr_t next_attr;
@@ -550,30 +461,30 @@ void server_chat(int sockfd, int c) {
 	pthread_create(&next_tid, &next_attr, next_thread, read_write);
 	printf("Next Thread %lu created.\n", next_tid);
 
+	pthread_attr_t post_attr;
+	pthread_attr_init(&post_attr);
+	pthread_create(&poster_tid, &post_attr, poster_thread, read_write);
+	printf("Next Thread %lu created.\n", poster_tid);
+
     // infinite loop for chat 
     while (sig_flag) { 
 
         bzero(read_buff, MAX); 
 		bzero(answer_buff, MAX);
 		
-		strcpy(answer_buff, "Input Not Found.\n");
-
         // read the message from client and copy it in buffer 
 		read(sockfd, read_buff, sizeof(read_buff)); 
 
-		if (strncmp(read_buff, "", 1) == 0) { 
-			strcpy(answer_buff, "w");
-		}
-		//printf("client sent: %s", read_buff);
-		
+		strcpy(answer_buff, "Input Not Found.");
+
 		printf(RED);
 			printf("client sent: %s", read_buff);
 		printf(RESET);
-		//printf("client sent: %s", read_buff);
+
 
 		// print buffer which contains the client contents 
 		argc = parse_input(read_buff, " ", argv);
-		
+		//printf("%d", argc);
 		if(argc >= 2){
 			channel_id = is_numeric(argv[1]);
 		} else {
@@ -596,53 +507,72 @@ void server_chat(int sockfd, int c) {
 			}
 		} else if (strncmp(argv[0], "UNSUB", 5) == 0) { 
 			unsubscribe(new_client, channel_id, answer_buff);
-		} else if (strncmp(argv[0], "NEXT", 4) == 0) { 
-			//next(new_client, channel_id, answer_buff);
+		} else if (strncmp(argv[0], "NEXT", 4) == 0 && !*read_write->next_flag_ptr) { 
+			
+			subbed_channel *next_cursor = NULL;
+
+			//Reading LIVEFEED
 			if(new_client->head == NULL){
-				char message[32] = "";
-				no_subscription(message, answer_buff);
 				*read_write->next_flag_ptr = 0;
+				printf("????");
+				strcpy(answer_buff, "No Channels.");
 			} else {
-				*read_write->next_flag_ptr = 1;
+			
+				read_write->next_id = channel_id;
+				
+				if(channel_id != -1){
+				
+					cursor = search(new_client->head, channel_id);
+
+					if(cursor == NULL){
+				
+						*read_write->next_flag_ptr = 0;
+						strcpy(answer_buff, "not subbed to channel");
+					} else {
+						*read_write->next_flag_ptr = 1;
+						strcpy(answer_buff, "\0");
+					}
+				} else {
+					*read_write->next_flag_ptr = 1;
+					strcpy(answer_buff, "\0");
+				}
+
 			}
 			
-			bzero(answer_buff, MAX);
-			bzero(read_buff, MAX);
-			continue;
+			free(next_cursor);
 		} else if (strncmp(argv[0],"LIVEFEED", 8) == 0  && !live_flag) {
 
 			//Reading LIVEFEED
 			if(new_client->head == NULL){
-
-				//Cant LiveFeed, Answers with N
-				strcpy(answer_buff, "N");
 				*read_write->live_flag_ptr = 0;
 				*read_write->live_ptr = 0;
+		
+				strcpy(answer_buff, "No Channels.");
 			} else {
-
+			
 				if(channel_id != -1){
-
+				
 					cursor = search(new_client->head, channel_id);
-					
+
 					if(cursor == NULL){
-						strcpy(answer_buff, "C");
 						*read_write->live_flag_ptr = 0;
 						*read_write->live_ptr = 0;
+						strcpy(answer_buff, "No Channels");
 					} else {
 						*read_write->live_flag_ptr = 1;
 						*read_write->live_ptr = 1;
-						strcpy(answer_buff, "R");	
+						
+						strcpy(answer_buff, "GOING LIVE WITH A CHANNELS!");
 					}
 
 				} else {
-				
-					//confirming with the client to start livefeed
+	
 					*read_write->live_flag_ptr = 1;
 					*read_write->live_ptr = 1;
-
-					strcpy(answer_buff, "R");
+					strcpy(answer_buff, "GOING LIVE!.");
 				}
 
+				read_write->live_id = channel_id;
 			}
 
 
@@ -672,49 +602,21 @@ void server_chat(int sockfd, int c) {
 
 		} else if (strncmp(argv[0], "CHANNELS", 8) == 0) { 
 			//Reading LIVEFEED
+			char m[MAX] = "";
+			
 
 			if(new_client->head == NULL){
-				//Cant LiveFeed, Answers with N
-				strcpy(answer_buff, "N");
+				strcpy(answer_buff, "No Channels");
 			} else {
 				int channel_live = 1;
-				subbed_channel* cursor = NULL;
-				cursor = new_client->head;	
-				char m[32] = "";
+				cursor = new_client->head;
 
-				//confirming with the client to start livefeed
-				strcpy(answer_buff, "R");
-
-				//sem_post(&w_mutex);
-					write(sockfd, answer_buff, sizeof(answer_buff));
-				//sem_wait(&w_mutex);
-
-				bzero(answer_buff, MAX);
-				bzero(read_buff, MAX);
-
-				while(channel_live && sig_flag){
-					//now read, then write
+				while(channel_live){
 					
-					//sem_wait(&r_mutex);
-						read(sockfd, read_buff, sizeof(read_buff)); 
-					//sem_wait(&r_mutex);
-					
-
-					//Handling SIG
-					if(strncmp(read_buff, "SIG", 3) == 0){
-
-					}
-
-					//stream read, if stream is broken please stapt after
-					if(strncmp(read_buff, "s", 1) == 0){
-					} else {
-						channel_live = 0;
-					}
-
 					if(cursor != NULL){
 						
 						channel *cur_channel = &memptr->channels[cursor->channel_id];
-
+			
 						bzero(m, sizeof(m)); //clear message buffer
 						cancat_int(m, cursor->channel_id);
 						strcat(m, ":");
@@ -724,58 +626,60 @@ void server_chat(int sockfd, int c) {
 						cancat_int(m, cursor->read_index);
 						strcat(m, "\t");
 						cancat_int(m, cur_channel->post_index - cursor->read_index);
-						strcpy(answer_buff, m);
 						cursor = cursor->next;
-						
+
 					} else { 
 						channel_live = 0;
-						strcpy(answer_buff, "d");
+						break;
 					}
-
-					//sem_post(&w_mutex);
-						write(sockfd, answer_buff, sizeof(answer_buff));
-					//sem_wait(&w_mutex);
-
-					bzero(answer_buff, MAX);
-					bzero(read_buff, MAX);
+					//sem_wait(&mutex);
+					new_worker->head = job_prepend(new_worker->head, 1, m);
+					//sem_post(&mutex);
 				}
+
 				continue;
 			}
 		} else if (strncmp(argv[0], "STOP", 4) == 0){
 			if(live_flag){
-				printf("Stopping Livefeed.\n");
-				live_flag = 0;
-				strcpy(answer_buff, "\0");
+				*read_write->live_flag_ptr = 0;
+				*read_write->live_ptr = 0;
+				strcpy(answer_buff, "Stopping Livefeed.");
 			} else {
-				strcpy(answer_buff, "\0");
+				//strcpy(answer_buff, "\0");
 			}
-		}
+		} 
 
-		
+		if(strncmp(argv[0], " ", 1) == 0){strcpy(answer_buff, "\0");}
 
-			write(sockfd, answer_buff, sizeof(answer_buff));
+		new_worker->head = job_prepend(new_worker->head, 1, answer_buff);
 
-
-		bzero(answer_buff, MAX);
+		//bzero(answer_buff, MAX);
 		bzero(read_buff, MAX);
-
     } 
 
+	pthread_join(poster_tid, NULL);
+	pthread_join(live_tid, NULL);
+	pthread_join(next_tid, NULL);
 
+	bzero(read_buff, MAX);
 
 	printf("Closing Client %d...\n", c); 		
 	
 	clean_up(argv, argc);
 
 	sub_dispose(new_client->head);
+	job_dispose(new_worker->head);
 
 	free(read_write);
 	free(new_client);
+	free(new_worker);
+	free(cursor);
 
-	printf("Threads %lu closing.\n", live_tid);
-	pthread_join(live_tid, NULL);
-	pthread_join(next_tid, NULL);
-	sem_destroy(&mutex);
+	printf("Threads %lu closing.\n", poster_tid);
+
+	//sem_destroy(&mutex);
+	pthread_mutex_destroy(&p_mutex);
+
 } 
 
 
@@ -795,15 +699,18 @@ int main(int argc, char *argv[]){
 		exit(1);
 	}
 
-	if(argc != 2){
-		fprintf(stderr,"usage: port #\n");
-		exit(1);
+	if(argc < 2){
+		fprintf(stderr,"using defualt port: 10000\n");
+		port = 10000;
+		//exit(1);
+	} else {
+		//port = atoi(argv[2]);
+		if(atoi(argv[1]) == 0){perror("port"); exit(1);}
+		port = atoi(argv[1]);
 	}
 
-	//port = atoi(argv[2]);
-	if(atoi(argv[1]) == 0){perror("port"); exit(1);}
 
-	port = atoi(argv[1]);
+	
 	/* generate the end point */
 	my_addr.sin_family = AF_INET;         /* host byte order */
 	my_addr.sin_port = htons(port);     /* short, network byte order */

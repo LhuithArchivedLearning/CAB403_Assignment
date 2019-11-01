@@ -5,6 +5,7 @@
         "stdio.h": "c",
         "string.h": "c",
         "stdlib.h": "c",
-        "printf_helper.h": "c"
+        "printf_helper.h": "c",
+        "worker_job_struct.h": "c"
     }
 }

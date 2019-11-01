@@ -11,12 +11,12 @@
 
 #client.o
 
-SERVER_OBJ = server.o shared.o subscriber.o helper.o printf_helper.o
-CLIENT_OBJ = client.o printf_helper.o helper.o
+SERVER_OBJ = server.o shared.o subscriber.o helper.o printf_helper.o worker.o
+CLIENT_OBJ = client.o printf_helper.o helper.o worker.o
 
 CC_FLAGS=-std=gnu99 -D_XOPEN_SOURCE=500#-Wall -Werror -g #-I../ZDK 
 LD_FLAGS=-lrt -pthread
-LIB_SRC = server.c client.c shared.c subscriber.c helper.c printf_helper.c
+LIB_SRC = server.c client.c shared.c subscriber.c helper.c printf_helper.c worker.c
 
 all: server client
 
