@@ -48,6 +48,7 @@ void SIGHANDLE(const int sig){
 }
 
 volatile sig_atomic_t sig_flag = 1;
+volatile sig_atomic_t thread_flag = 1;
 volatile sig_atomic_t live_flag = 0;
 volatile sig_atomic_t live = 0;
 
@@ -56,6 +57,8 @@ volatile sig_atomic_t next_flag = 0;
 void sigint_handler(int sig){
 		live_flag = 0;
 		sig_flag = 0;
+		thread_flag = 0;
+		
 		printf("pid:%d\n", getpid());
 		if(pid_test == 0){clean_up_shared_mem();}
 }
@@ -217,11 +220,14 @@ struct read_write_struct{
 	volatile sig_atomic_t *live_flag_ptr;
 	volatile sig_atomic_t *live_ptr;
 	volatile sig_atomic_t *next_flag_ptr;
+
+	volatile sig_atomic_t *thread_flag_ptr;
 };
 
 
 sem_t mutex;
 pthread_mutex_t p_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t schedular_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 //read worker jobs and send them to client
 void* poster_thread(void* struct_pass){
@@ -232,7 +238,7 @@ void* poster_thread(void* struct_pass){
 	char m[32] = "";
 	job *tmp_job = NULL;
 
-	while(sig_flag) {
+	while(sig_flag && thread_flag) {
 
 		if(tmp_job == NULL && read_write->w->head != NULL){tmp_job = read_write->w->head;} 
 
@@ -240,10 +246,9 @@ void* poster_thread(void* struct_pass){
 		if(tmp_job != NULL){
 		
 			strcpy(m, tmp_job->data);
-			printf("%s", tmp_job->data);
+			//printf("%s", tmp_job->data);
 			read_write->w->head = remove_job(read_write->w->head, tmp_job);
 			tmp_job = NULL;
-		
 		} else {
 			strcpy(m, "\0");
 		}
@@ -253,8 +258,8 @@ void* poster_thread(void* struct_pass){
 	}
 
 	bzero(w_buff, MAX);
-	free(read_write);
-	free(tmp_job);
+	//free(read_write);
+	//free(tmp_job);
 	pthread_exit(0);
 }
 
@@ -266,7 +271,7 @@ void* livefeed_thread(void* struct_pass){
 
 	subbed_channel* cursor;
 
-	while(sig_flag){
+	while(sig_flag && thread_flag){
 		while (*read_write->live_ptr){
 			//printf("anus.");
 			if(cursor == NULL && read_write->c->head != NULL){ cursor = read_write->c->head;} 
@@ -287,7 +292,10 @@ void* livefeed_thread(void* struct_pass){
 								memset(m, 0, sizeof(m)); //clear message buffer
 								cancat_int(m, cursor->channel_id);
 								strcat(m, ":");
-								strcat(m, cur_channel->posts[cursor->read_index++].message);
+
+								pthread_mutex_lock(&p_mutex);
+									strcat(m, cur_channel->posts[cursor->read_index++].message);
+								pthread_mutex_unlock(&p_mutex);
 							} else {
 								strcpy(m, "\0");
 							}
@@ -295,7 +303,9 @@ void* livefeed_thread(void* struct_pass){
 							if(cursor->next != NULL){cursor = cursor->next;} else {cursor = read_write->c->head;}
 						
 						} else {
-							read_write->w->head = job_prepend(read_write->w->head, 1, "No Channels.");
+							pthread_mutex_lock(&schedular_mutex);
+								read_write->w->head = job_prepend(read_write->w->head, 1, "No Channels.");
+							pthread_mutex_unlock(&schedular_mutex);
 						}
 					//---------------------------------------- READING ALL ---------------------------
 				} else {
@@ -307,20 +317,23 @@ void* livefeed_thread(void* struct_pass){
 						memset(m, 0, sizeof(m)); //clear message buffer
 						cancat_int(m, read_write->live_id);
 						strcat(m, ":");
-						strcat(m, cur_channel->posts[cursor->read_index++].message);
+						pthread_mutex_lock(&p_mutex);
+							strcat(m, cur_channel->posts[cursor->read_index++].message);
+						pthread_mutex_unlock(&p_mutex);
 					} else {			
 						strcpy(m, "\0");
 					}	
 				}
 
-			
-				read_write->w->head = job_prepend(read_write->w->head, 1, m);
+				pthread_mutex_lock(&schedular_mutex);
+					read_write->w->head = job_prepend(read_write->w->head, 1, m);
+				pthread_mutex_unlock(&schedular_mutex);
 				//pthread_mutex_unlock(&p_mutex); 
 			}
 		}
 
-	free(read_write);
-	free(cursor);
+	//free(read_write);
+	//free(cursor);
 	pthread_exit(0);
 }
 
@@ -332,7 +345,7 @@ void* next_thread(void* struct_pass){
 
 	char m[MAX] = "";
 
-	while(sig_flag){
+	while(sig_flag && thread_flag){
 		if(*read_write->next_flag_ptr){
 
 			bzero(m, MAX);
@@ -365,7 +378,9 @@ void* next_thread(void* struct_pass){
 							memset(m, 0, sizeof(m)); //clear message buffer
 							cancat_int(m, cursor->channel_id);
 							strcat(m, ":");
-							strcat(m, cur_channel->posts[cursor->read_index++].message);
+							pthread_mutex_lock(&p_mutex);
+								strcat(m, cur_channel->posts[cursor->read_index++].message);
+							pthread_mutex_unlock(&p_mutex);
 							break;
 						} else {
 							cursor = cursor->next;
@@ -388,23 +403,26 @@ void* next_thread(void* struct_pass){
 						memset(m, 0, sizeof(m)); //clear message buffer
 						cancat_int(m, cursor->channel_id);
 						strcat(m, ":");
-						strcat(m, cur_channel->posts[cursor->read_index++].message);
+						pthread_mutex_lock(&p_mutex);
+							strcat(m, cur_channel->posts[cursor->read_index++].message);
+						pthread_mutex_unlock(&p_mutex);
 					} else {
 						strcpy(m, "no new message.");
 					}
 				}
 
 			}
-
-			read_write->w->head = job_prepend(read_write->w->head, 1, m);
+			pthread_mutex_lock(&schedular_mutex);
+				read_write->w->head = job_prepend(read_write->w->head, 1, m);
+			pthread_mutex_unlock(&schedular_mutex);
 
 			*read_write->next_flag_ptr = 0;
 			cursor = NULL;
 		}
 	}
 
-	free(read_write);
-	free(cursor);
+	//free(read_write);
+	//free(cursor);
 	pthread_exit(0);
 }
 	
@@ -449,7 +467,7 @@ void server_chat(int sockfd, int c) {
 	read_write->live_flag_ptr = &live_flag;
 	read_write->live_ptr = &live;
 	read_write->next_flag_ptr = &next_flag;	
-
+	read_write->thread_flag_ptr = &thread_flag;
 
 	pthread_attr_t live_attr;
 	pthread_attr_init(&live_attr);
@@ -493,6 +511,7 @@ void server_chat(int sockfd, int c) {
 
 		// if msg contains "Exit" then server exit and chat ended. 
         if (strncmp(argv[0], "BYE", 3) == 0) { 
+			thread_flag = 0;
 			break; 
         } else if (strncmp(argv[0], "SUB", 3) == 0) { 
 			
@@ -589,7 +608,10 @@ void server_chat(int sockfd, int c) {
 					channel *cur_channel = &memptr->channels[channel_id];
 
 					remove_substring(argv[2], "\n");
-					strcpy(cur_channel->posts[cur_channel->post_index++].message, argv[2]);
+
+					pthread_mutex_lock(&p_mutex);
+						strcpy(cur_channel->posts[cur_channel->post_index++].message, argv[2]);
+					pthread_mutex_unlock(&p_mutex);
 
 					char message[25] = {"Client #"};
 					cancat_int(message, c);
@@ -633,7 +655,9 @@ void server_chat(int sockfd, int c) {
 						break;
 					}
 					//sem_wait(&mutex);
-					new_worker->head = job_prepend(new_worker->head, 1, m);
+					pthread_mutex_lock(&schedular_mutex);
+						new_worker->head = job_prepend(new_worker->head, 1, m);
+					pthread_mutex_unlock(&schedular_mutex);
 					//sem_post(&mutex);
 				}
 
@@ -651,15 +675,15 @@ void server_chat(int sockfd, int c) {
 
 		if(strncmp(argv[0], " ", 1) == 0){strcpy(answer_buff, "\0");}
 
-		new_worker->head = job_prepend(new_worker->head, 1, answer_buff);
+		pthread_mutex_lock(&schedular_mutex);
+			new_worker->head = job_prepend(new_worker->head, 1, answer_buff);
+		pthread_mutex_unlock(&schedular_mutex);
 
 		//bzero(answer_buff, MAX);
 		bzero(read_buff, MAX);
     } 
 
-	pthread_join(poster_tid, NULL);
-	pthread_join(live_tid, NULL);
-	pthread_join(next_tid, NULL);
+
 
 	bzero(read_buff, MAX);
 
@@ -677,9 +701,13 @@ void server_chat(int sockfd, int c) {
 
 	printf("Threads %lu closing.\n", poster_tid);
 
+	pthread_join(poster_tid, NULL);
+	pthread_join(live_tid, NULL);
+	pthread_join(next_tid, NULL);
+
 	//sem_destroy(&mutex);
 	pthread_mutex_destroy(&p_mutex);
-
+	pthread_mutex_destroy(&schedular_mutex);
 } 
 
 
