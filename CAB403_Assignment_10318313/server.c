@@ -199,17 +199,15 @@ void* livefeed_thread(void* struct_pass){
 
 	char m[32] = "";
 
-	subbed_channel* cursor;
+	subbed_channel* cursor = NULL;
 
 	while(sig_flag && thread_flag){
 		while (*read_write->live_ptr){
-			//printf("anus.");
 			if(cursor == NULL && read_write->c->head != NULL){ cursor = read_write->c->head;} 
 			
-				//sleep(1);
+				sleep(1);
 
 				//meat and potatoes
-
 				if(read_write->live_id < 0){
 	
 					//---------------------------------------- READING ALL ---------------------------
@@ -223,22 +221,22 @@ void* livefeed_thread(void* struct_pass){
 								strcat(m, ":");
 
 								pthread_mutex_lock(&p_mutex);
-									strcat(m, cur_channel->posts[cursor->read_index++].message);
+									strcat(m, cur_channel->posts[cursor->read_index++].message);		
+									read_write->w->head = job_prepend(read_write->w->head, 1, m);
 								pthread_mutex_unlock(&p_mutex);
 
-								read_write->w->head = job_prepend(read_write->w->head, 1, m);
 							} else {
 								//strcpy(m, "\0");
-							}
 
-							if(cursor->next != NULL){cursor = cursor->next;} else {cursor = read_write->c->head;}
+								if(cursor->next != NULL){cursor = cursor->next;} 
+								else {cursor = read_write->c->head;}
+							}
 						
 						} else {
 							pthread_mutex_lock(&schedular_mutex);
 								read_write->w->head = job_prepend(read_write->w->head, 1, "No Channels.");
 							pthread_mutex_unlock(&schedular_mutex);
 
-							read_write->w->head = job_prepend(read_write->w->head, 1, m);
 						}
 					//---------------------------------------- READING ALL ---------------------------
 				} else {
@@ -260,6 +258,8 @@ void* livefeed_thread(void* struct_pass){
 				}
 
 			}
+
+			//cursor = NULL;
 		}
 
 	//read_write = NULL;
@@ -467,7 +467,26 @@ void server_chat(int sockfd, int c) {
 				}				
 			}
 		} else if (strncmp(argv[0], "UNSUB", 5) == 0) { 
-			unsubscribe(new_client, channel_id, answer_buff);
+			
+
+			if(new_client->head != NULL){
+				subbed_channel* tmp_check = search(new_client->head, channel_id);
+
+				if(tmp_check == NULL){
+					strcpy(answer_buff, "Not Subbed to channel ");
+					//cancat_int
+				} else {
+					if(!live_flag)
+						unsubscribe(new_client, channel_id, answer_buff);
+					else {
+						strcpy(answer_buff, "Please close livefeed.");
+					}
+				}
+			} else {
+				strcpy(answer_buff, "No Channels.");
+			}
+
+			//free(sub_tmp);
 		} else if (strncmp(argv[0], "NEXT", 4) == 0 && !*read_write->next_flag_ptr) { 
 			
 			subbed_channel *next_cursor = NULL;
@@ -505,9 +524,8 @@ void server_chat(int sockfd, int c) {
 			if(!live_flag){
 				//Reading LIVEFEED
 				if(new_client->head == NULL){
-					*read_write->live_flag_ptr = 0;
-					*read_write->live_ptr = 0;
-			
+					live = 0;
+					live_flag = 0;
 					strcpy(answer_buff, "No Channels.");
 				} else {
 				
@@ -516,20 +534,19 @@ void server_chat(int sockfd, int c) {
 						cursor = search(new_client->head, channel_id);
 
 						if(cursor == NULL){
-							*read_write->live_flag_ptr = 0;
-							*read_write->live_ptr = 0;
+							live = 0;
+							live_flag = 0;
 							strcpy(answer_buff, "No Channels");
 						} else {
-							*read_write->live_flag_ptr = 1;
-							*read_write->live_ptr = 1;
-							
+							live_flag = 1;
+							live = 1;
 							strcpy(answer_buff, "GOING LIVE WITH A CHANNELS!");
 						}
 
 					} else {
 		
-						*read_write->live_flag_ptr = 1;
-						*read_write->live_ptr = 1;
+						live_flag = 1;
+						live = 1;
 						strcpy(answer_buff, "GOING LIVE!.");
 					}
 
@@ -610,8 +627,8 @@ void server_chat(int sockfd, int c) {
 			}
 		} else if (strncmp(argv[0], "STOP", 4) == 0){
 			if(live_flag){
-				*read_write->live_flag_ptr = 0;
-				*read_write->live_ptr = 0;
+				live = 0;
+				live_flag = 0;
 				strcpy(answer_buff, "Stopping Livefeed.");
 			} else {
 				strcpy(answer_buff, "Livefeed not active.");
@@ -736,8 +753,10 @@ int main(int argc, char *argv[]){
 			char message[255] = {"Welcome! Your Client ID is <"};
 
 			pthread_mutex_lock(&p_mutex);
-				int clientid = memptr->num_clients++;
+				memptr->num_clients++;
 			pthread_mutex_unlock(&p_mutex);
+
+			int clientid = getpid();
 
 			cancat_int(message, clientid);
 			strcat(message, ">\n");
