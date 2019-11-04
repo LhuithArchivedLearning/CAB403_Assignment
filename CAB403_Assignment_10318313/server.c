@@ -649,7 +649,6 @@ void server_chat(int sockfd, int c) {
 	pthread_join(next_tid, NULL);
 
 	//sem_destroy(&mutex);
-	pthread_mutex_destroy(&p_mutex);
 	pthread_mutex_destroy(&schedular_mutex);
 } 
 
@@ -735,7 +734,11 @@ int main(int argc, char *argv[]){
 
 			/* WELCOME MESSAGE */	
 			char message[255] = {"Welcome! Your Client ID is <"};
-			int clientid = memptr->num_clients++;
+
+			pthread_mutex_lock(&p_mutex);
+				int clientid = memptr->num_clients++;
+			pthread_mutex_unlock(&p_mutex);
+
 			cancat_int(message, clientid);
 			strcat(message, ">\n");
 			size_t len = strlen(message);
@@ -746,6 +749,12 @@ int main(int argc, char *argv[]){
 			//chat with the client
 			server_chat(new_fd, clientid);
 			
+			pthread_mutex_lock(&p_mutex);
+				memptr->num_clients--;
+			pthread_mutex_unlock(&p_mutex);
+
+			//removing pthread mutex
+			pthread_mutex_destroy(&p_mutex);
 			printf("server: closing connection from %s\n", inet_ntoa(their_addr.sin_addr));
 
 			close(new_fd);
