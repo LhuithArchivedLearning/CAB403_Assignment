@@ -94,7 +94,7 @@ void subscribe(client* c, int id, char buff[]){
 
 		if(sub_tmp != NULL){
 			strcpy(message, "Already Subscribed to ");
-			cancat_int(message, c->head->channel_id);
+			cancat_int(message, id);
 			strcpy(buff, message);
 			return;
 		}
@@ -633,7 +633,15 @@ void server_chat(int sockfd, int c) {
 			} else {
 				strcpy(answer_buff, "Livefeed not active.");
 			}
-		} 
+		} else  if (strncmp(argv[0], "SIG", 3) == 0) { 
+			printf("getting live sig\n");
+			if(live_flag) {
+				live_flag = 0; live = 0;
+				strcpy(answer_buff, "Stopping Livefeed.");
+			}
+			//thread_flag = 0;
+			//break; 
+        } 
 
 		if(strncmp(argv[0], " ", 1) == 0){strcpy(answer_buff, "\0");}
 

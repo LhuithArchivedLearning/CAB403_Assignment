@@ -41,6 +41,9 @@ volatile sig_atomic_t next_flag = 0;
 void sigint_handler(int sig){
 	if (live_flag == 1){
 		live_flag = 0;
+
+		char m[32] = "SIG";
+		write(client_socket, m, sizeof(m));
 	}
 	else{
 		sig_flag = 0;
@@ -103,12 +106,14 @@ void client_chat(int sockfd){
 
 	char* argv[5];
 	char parse_string[MAX];
-	
+	int args = 0;
+
 	while (sig_flag){
 		//bzero(r_buff, MAX);
+		fflush(stdin);
 		bzero(w_buff, MAX);
 
-		n = 0, f = 0;
+		n = 0, f = 0, args = 0;;
 
 		socket_info socketpass;
 		socketpass.socket_fd = sockfd;
@@ -117,7 +122,7 @@ void client_chat(int sockfd){
 
 		strcpy(parse_string, w_buff);
 
-		parse_input(parse_string, " ", argv);
+		args = parse_input(parse_string, " ", argv);
 
 		if ((strncmp(w_buff, "BYE", 3)) == 0){
 			break;
@@ -125,18 +130,32 @@ void client_chat(int sockfd){
 			if(!live_flag){
 				live_flag = 1;
 			}
-		} else if ((strncmp(w_buff, "CHANNELS", 8)) == 0){
+		} else if ((strncmp(argv[0], "CHANNELS", 8)) == 0){
 
-		} else if ((strncmp(w_buff, "STOP", 4)) == 0){
+		} else if ((strncmp(argv[0], "STOP", 4)) == 0){
 			if(live_flag){
 				live_flag = 0;
 			}
 				
-		} else if ((strncmp(w_buff, "NEXT", 4)) == 0){
+		} else if ((strncmp(argv[0], "NEXT", 4)) == 0){
 
 		}
+	
+		//reconstructing feed
+		char output[MAX] = "";
+		strcpy(output, argv[0]);
+		
+		if(args > 1) {
+			strcat(output, " ");
+			strcat(output, argv[1]);
+		}
 
-		write(sockfd, w_buff, sizeof(w_buff));
+		if(args > 2){
+			strcat(output, " ");
+			strcat(output, argv[2]);
+		} 
+
+		write(sockfd, output, sizeof(output));
 
 		bzero(w_buff, MAX);
 	}
