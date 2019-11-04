@@ -38,11 +38,7 @@ volatile sig_atomic_t live_flag = 0;
 volatile sig_atomic_t live = 0;
 volatile sig_atomic_t next_flag = 0;
 
-void sigint_handler(int sig)
-{
-
-	//printf("pid:%d AHHH SIGINT!\n", getpid());
-
+void sigint_handler(int sig){
 	if (live_flag == 1){
 		live_flag = 0;
 	}
@@ -107,7 +103,7 @@ void client_chat(int sockfd){
 
 	char* argv[5];
 	char parse_string[MAX];
-
+	
 	while (sig_flag){
 		//bzero(r_buff, MAX);
 		bzero(w_buff, MAX);
@@ -126,11 +122,16 @@ void client_chat(int sockfd){
 		if ((strncmp(w_buff, "BYE", 3)) == 0){
 			break;
 		} else if ((strncmp(argv[0], "LIVEFEED", 8)) == 0){
-
+			if(!live_flag){
+				live_flag = 1;
+			}
 		} else if ((strncmp(w_buff, "CHANNELS", 8)) == 0){
 
 		} else if ((strncmp(w_buff, "STOP", 4)) == 0){
-
+			if(live_flag){
+				live_flag = 0;
+			}
+				
 		} else if ((strncmp(w_buff, "NEXT", 4)) == 0){
 
 		}

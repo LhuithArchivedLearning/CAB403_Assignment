@@ -135,77 +135,6 @@ void unsubscribe(client* c, int id, char buff[]){
 	strcpy(buff, message);			
 }
 
-void next(client* c, int id, char buff[]){
-	//printf("id : %d\n", id);
-	
-	subbed_channel* sub_tmp = NULL;
-
-	char message[32] = {""};
-
-	if(c->head == NULL){
-		no_subscription(message, buff);
-		return;
-	} 
-	
-
-	//if they give me a number
-	if(id > 0){
-		sub_tmp = search(c->head, id);
-
-		if(sub_tmp == NULL){
-			strcpy(message, "Not subscribed to channel ");
-			cancat_int(message, id);
-		} else {
-			channel *cur_channel = &memptr->channels[id];
-			
-			cancat_int(message, id);
-			strcat(message, ":");
-		
-			if(sub_tmp->read_index < cur_channel->post_index){
-				strcat(message, cur_channel->posts[sub_tmp->read_index++].message);
-			} else {			
-				//strcat(message, "No New Messages");
-			}	
-		}
-	} else {
-		//strcpy(message, "Getting Next Message I GUESS!.");
-		sub_tmp = c->head;//search(c->head, id);
-
-		while(sub_tmp != NULL){
-
-			channel *cur_channel = &memptr->channels[sub_tmp->channel_id];	
-
-			if(sub_tmp->read_index < cur_channel->post_index){
-				cancat_int(message, sub_tmp->channel_id);
-				strcat(message, ":");
-				strcat(message, cur_channel->posts[sub_tmp->read_index++].message);
-				break;
-			} else {			
-				sub_tmp = sub_tmp->next;
-			}
-		}
-	}
-
-
-	strcat(message, "\n");
-	strcpy(buff, message);
-}
-
-void Channels(client* c, int id, int socket, char reader[]){
-
-	subbed_channel* sub_tmp = NULL;
-	sub_tmp = search(c->head, id);
-
-	if(sub_tmp == NULL){
-		printf("no channels");
-	} else {
-			while(sub_tmp != NULL){
-			printf("inlive: %d\n", sub_tmp->channel_id);
-			sub_tmp = sub_tmp->next;
-		}
-	}
-}
-
 
 struct read_write_struct{
 	client *c;
@@ -258,8 +187,9 @@ void* poster_thread(void* struct_pass){
 	}
 
 	bzero(w_buff, MAX);
+	//read_write = NULL;
 	//free(read_write);
-	//free(tmp_job);
+	free(tmp_job);
 	pthread_exit(0);
 }
 
@@ -276,10 +206,9 @@ void* livefeed_thread(void* struct_pass){
 			//printf("anus.");
 			if(cursor == NULL && read_write->c->head != NULL){ cursor = read_write->c->head;} 
 			
-				sleep(1);
+				//sleep(1);
 
 				//meat and potatoes
-				//pthread_mutex_lock(&p_mutex); 
 
 				if(read_write->live_id < 0){
 	
@@ -296,8 +225,10 @@ void* livefeed_thread(void* struct_pass){
 								pthread_mutex_lock(&p_mutex);
 									strcat(m, cur_channel->posts[cursor->read_index++].message);
 								pthread_mutex_unlock(&p_mutex);
+
+								read_write->w->head = job_prepend(read_write->w->head, 1, m);
 							} else {
-								strcpy(m, "\0");
+								//strcpy(m, "\0");
 							}
 
 							if(cursor->next != NULL){cursor = cursor->next;} else {cursor = read_write->c->head;}
@@ -306,6 +237,8 @@ void* livefeed_thread(void* struct_pass){
 							pthread_mutex_lock(&schedular_mutex);
 								read_write->w->head = job_prepend(read_write->w->head, 1, "No Channels.");
 							pthread_mutex_unlock(&schedular_mutex);
+
+							read_write->w->head = job_prepend(read_write->w->head, 1, m);
 						}
 					//---------------------------------------- READING ALL ---------------------------
 				} else {
@@ -320,20 +253,19 @@ void* livefeed_thread(void* struct_pass){
 						pthread_mutex_lock(&p_mutex);
 							strcat(m, cur_channel->posts[cursor->read_index++].message);
 						pthread_mutex_unlock(&p_mutex);
+
+						read_write->w->head = job_prepend(read_write->w->head, 1, m);
 					} else {			
-						strcpy(m, "\0");
 					}	
 				}
 
-				pthread_mutex_lock(&schedular_mutex);
-					read_write->w->head = job_prepend(read_write->w->head, 1, m);
-				pthread_mutex_unlock(&schedular_mutex);
-				//pthread_mutex_unlock(&p_mutex); 
 			}
 		}
 
+	//read_write = NULL;
 	//free(read_write);
-	//free(cursor);
+
+	free(cursor);
 	pthread_exit(0);
 }
 
@@ -421,8 +353,10 @@ void* next_thread(void* struct_pass){
 		}
 	}
 
+	//read_write = NULL;
 	//free(read_write);
-	//free(cursor);
+
+	free(cursor);
 	pthread_exit(0);
 }
 	
@@ -490,13 +424,21 @@ void server_chat(int sockfd, int c) {
         bzero(read_buff, MAX); 
 		bzero(answer_buff, MAX);
 		
-        // read the message from client and copy it in buffer 
-		read(sockfd, read_buff, sizeof(read_buff)); 
+        // read the message from client and copy it in buffer,
+		// if connection lost before the client can say bye
+		// close the chat 
+		if(read(sockfd, read_buff, sizeof(read_buff)) == -1){
+			thread_flag = 0;
+			printf("Connection lost, rude client close.\n");
+			break;
+		} else {
+	
+		}
 
 		strcpy(answer_buff, "Input Not Found.");
 
 		printf(RED);
-			printf("client sent: %s", read_buff);
+			printf("client sent: %s\n", read_buff);
 		printf(RESET);
 
 
@@ -533,7 +475,6 @@ void server_chat(int sockfd, int c) {
 			//Reading LIVEFEED
 			if(new_client->head == NULL){
 				*read_write->next_flag_ptr = 0;
-				printf("????");
 				strcpy(answer_buff, "No Channels.");
 			} else {
 			
@@ -559,39 +500,43 @@ void server_chat(int sockfd, int c) {
 			}
 			
 			free(next_cursor);
-		} else if (strncmp(argv[0],"LIVEFEED", 8) == 0  && !live_flag) {
+		} else if (strncmp(argv[0],"LIVEFEED", 8) == 0) {
 
-			//Reading LIVEFEED
-			if(new_client->head == NULL){
-				*read_write->live_flag_ptr = 0;
-				*read_write->live_ptr = 0;
-		
-				strcpy(answer_buff, "No Channels.");
-			} else {
+			if(!live_flag){
+				//Reading LIVEFEED
+				if(new_client->head == NULL){
+					*read_write->live_flag_ptr = 0;
+					*read_write->live_ptr = 0;
 			
-				if(channel_id != -1){
+					strcpy(answer_buff, "No Channels.");
+				} else {
 				
-					cursor = search(new_client->head, channel_id);
+					if(channel_id != -1){
+					
+						cursor = search(new_client->head, channel_id);
 
-					if(cursor == NULL){
-						*read_write->live_flag_ptr = 0;
-						*read_write->live_ptr = 0;
-						strcpy(answer_buff, "No Channels");
+						if(cursor == NULL){
+							*read_write->live_flag_ptr = 0;
+							*read_write->live_ptr = 0;
+							strcpy(answer_buff, "No Channels");
+						} else {
+							*read_write->live_flag_ptr = 1;
+							*read_write->live_ptr = 1;
+							
+							strcpy(answer_buff, "GOING LIVE WITH A CHANNELS!");
+						}
+
 					} else {
+		
 						*read_write->live_flag_ptr = 1;
 						*read_write->live_ptr = 1;
-						
-						strcpy(answer_buff, "GOING LIVE WITH A CHANNELS!");
+						strcpy(answer_buff, "GOING LIVE!.");
 					}
 
-				} else {
-	
-					*read_write->live_flag_ptr = 1;
-					*read_write->live_ptr = 1;
-					strcpy(answer_buff, "GOING LIVE!.");
+					read_write->live_id = channel_id;
 				}
-
-				read_write->live_id = channel_id;
+			} else {
+				strcpy(answer_buff, "Livefeed already active.");
 			}
 
 
@@ -669,15 +614,13 @@ void server_chat(int sockfd, int c) {
 				*read_write->live_ptr = 0;
 				strcpy(answer_buff, "Stopping Livefeed.");
 			} else {
-				//strcpy(answer_buff, "\0");
+				strcpy(answer_buff, "Livefeed not active.");
 			}
 		} 
 
 		if(strncmp(argv[0], " ", 1) == 0){strcpy(answer_buff, "\0");}
 
-		pthread_mutex_lock(&schedular_mutex);
-			new_worker->head = job_prepend(new_worker->head, 1, answer_buff);
-		pthread_mutex_unlock(&schedular_mutex);
+		new_worker->head = job_prepend(new_worker->head, 1, answer_buff);
 
 		//bzero(answer_buff, MAX);
 		bzero(read_buff, MAX);
