@@ -164,7 +164,7 @@ void* poster_thread(void* struct_pass){
 	struct read_write_struct *read_write = (struct read_write_struct*) struct_pass;
 
 	char w_buff[MAX];
-	char m[32] = "";
+	char m[MAX] = "";
 	job *tmp_job = NULL;
 
 	while(sig_flag && thread_flag) {
@@ -177,10 +177,12 @@ void* poster_thread(void* struct_pass){
 			strcpy(m, tmp_job->data);
 			//printf("%s", tmp_job->data);
 			read_write->w->head = remove_job(read_write->w->head, tmp_job);
-			tmp_job = NULL;
+			tmp_job = read_write->w->head;
 		} else {
 			strcpy(m, "\0");
 		}
+
+		 
 			strcpy(w_buff, m);
 			write(read_write->socket, w_buff, sizeof(w_buff));
 			bzero(w_buff, MAX);
@@ -222,8 +224,9 @@ void* livefeed_thread(void* struct_pass){
 
 								pthread_mutex_lock(&p_mutex);
 									strcat(m, cur_channel->posts[cursor->read_index++].message);		
-									read_write->w->head = job_prepend(read_write->w->head, 1, m);
 								pthread_mutex_unlock(&p_mutex);
+
+								read_write->w->head = job_prepend(read_write->w->head, 1, m);
 
 							} else {
 								//strcpy(m, "\0");
@@ -315,9 +318,11 @@ void* next_thread(void* struct_pass){
 							memset(m, 0, sizeof(m)); //clear message buffer
 							cancat_int(m, cursor->channel_id);
 							strcat(m, ":");
+							
 							pthread_mutex_lock(&p_mutex);
 								strcat(m, cur_channel->posts[cursor->read_index++].message);
 							pthread_mutex_unlock(&p_mutex);
+							
 							break;
 						} else {
 							cursor = cursor->next;
