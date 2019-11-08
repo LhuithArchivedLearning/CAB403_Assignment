@@ -186,6 +186,7 @@ void* poster_thread(void* struct_pass){
 			bzero(w_buff, MAX);
 	}
 
+	printf("Closing Poster.");
 	bzero(w_buff, MAX);
 	//read_write = NULL;
 	//free(read_write);
@@ -205,14 +206,13 @@ void* livefeed_thread(void* struct_pass){
 		while (*read_write->live_ptr){
 			if(cursor == NULL && read_write->c->head != NULL){ cursor = read_write->c->head;} 
 			
-				sleep(1);
+				//sleep(1);
 
 				//meat and potatoes
-				if(read_write->live_id < 0){
+				if(read_write->live_id == -1){
 	
 					//---------------------------------------- READING ALL ---------------------------
 					if(cursor != NULL && read_write->c->head != NULL){
-
 							channel *cur_channel = &read_write->memptr->channels[cursor->channel_id];
 						
 							if(cursor->read_index < cur_channel->post_index){
@@ -233,28 +233,33 @@ void* livefeed_thread(void* struct_pass){
 							}
 						
 						} else {
-							pthread_mutex_lock(&schedular_mutex);
 								read_write->w->head = job_prepend(read_write->w->head, 1, "No Channels.");
-							pthread_mutex_unlock(&schedular_mutex);
-
 						}
 					//---------------------------------------- READING ALL ---------------------------
 				} else {
-					channel *cur_channel = &memptr->channels[read_write->live_id];
-					
-					cursor = search(read_write->c->head, read_write->live_id);
+					//---------------------------------------- READING CHANNEL ---------------------------
+					if(cursor != NULL && read_write->c->head != NULL){
+						channel *cur_channel = &memptr->channels[read_write->live_id];
+						
+						cursor = search(read_write->c->head, read_write->live_id);
 
-					if(cursor->read_index < cur_channel->post_index){
-						memset(m, 0, sizeof(m)); //clear message buffer
-						cancat_int(m, read_write->live_id);
-						strcat(m, ":");
-						pthread_mutex_lock(&p_mutex);
-							strcat(m, cur_channel->posts[cursor->read_index++].message);
-						pthread_mutex_unlock(&p_mutex);
+						if(cursor->read_index < cur_channel->post_index){
+							memset(m, 0, sizeof(m)); //clear message buffer
+							cancat_int(m, read_write->live_id);
+							strcat(m, ":");
 
-						read_write->w->head = job_prepend(read_write->w->head, 1, m);
-					} else {			
-					}	
+							pthread_mutex_lock(&p_mutex);
+								strcat(m, cur_channel->posts[cursor->read_index++].message);
+								read_write->w->head = job_prepend(read_write->w->head, 1, m);
+							pthread_mutex_unlock(&p_mutex);
+						} else {			
+						}	
+					} else {
+
+						read_write->w->head = job_prepend(read_write->w->head, 1, "No Channels.");
+
+					}
+					//---------------------------------------- READING CHANNEL ---------------------------
 				}
 
 			}
@@ -264,7 +269,7 @@ void* livefeed_thread(void* struct_pass){
 
 	//read_write = NULL;
 	//free(read_write);
-
+	printf("Closing Live.");
 	free(cursor);
 	pthread_exit(0);
 }
@@ -344,9 +349,9 @@ void* next_thread(void* struct_pass){
 				}
 
 			}
-			pthread_mutex_lock(&schedular_mutex);
+			//pthread_mutex_lock(&schedular_mutex);
 				read_write->w->head = job_prepend(read_write->w->head, 1, m);
-			pthread_mutex_unlock(&schedular_mutex);
+			//pthread_mutex_unlock(&schedular_mutex);
 
 			*read_write->next_flag_ptr = 0;
 			cursor = NULL;
@@ -355,7 +360,7 @@ void* next_thread(void* struct_pass){
 
 	//read_write = NULL;
 	//free(read_write);
-
+	printf("Closing Next.");
 	free(cursor);
 	pthread_exit(0);
 }
@@ -431,9 +436,7 @@ void server_chat(int sockfd, int c) {
 			thread_flag = 0;
 			printf("Connection lost, rude client close.\n");
 			break;
-		} else {
-	
-		}
+		} 
 
 		strcpy(answer_buff, "Input Not Found.");
 
@@ -528,7 +531,10 @@ void server_chat(int sockfd, int c) {
 					live_flag = 0;
 					strcpy(answer_buff, "No Channels.");
 				} else {
-				
+					
+					
+					read_write->live_id = channel_id;
+
 					if(channel_id != -1){
 					
 						cursor = search(new_client->head, channel_id);
@@ -540,17 +546,20 @@ void server_chat(int sockfd, int c) {
 						} else {
 							live_flag = 1;
 							live = 1;
-							strcpy(answer_buff, "GOING LIVE WITH A CHANNELS!");
+
+							char m[32] = "Entering Livefeeed: ";
+							cancat_int(m, channel_id);
+
+							strcpy(answer_buff, m);
 						}
 
 					} else {
 		
 						live_flag = 1;
 						live = 1;
-						strcpy(answer_buff, "GOING LIVE!.");
+						strcpy(answer_buff, "Entering Livefeeed.");
 					}
 
-					read_write->live_id = channel_id;
 				}
 			} else {
 				strcpy(answer_buff, "Livefeed already active.");
@@ -617,9 +626,9 @@ void server_chat(int sockfd, int c) {
 						break;
 					}
 					//sem_wait(&mutex);
-					pthread_mutex_lock(&schedular_mutex);
+					//pthread_mutex_lock(&schedular_mutex);
 						new_worker->head = job_prepend(new_worker->head, 1, m);
-					pthread_mutex_unlock(&schedular_mutex);
+					//pthread_mutex_unlock(&schedular_mutex);
 					//sem_post(&mutex);
 				}
 
@@ -634,13 +643,14 @@ void server_chat(int sockfd, int c) {
 				strcpy(answer_buff, "Livefeed not active.");
 			}
 		} else  if (strncmp(argv[0], "SIG", 3) == 0) { 
-			printf("getting live sig\n");
 			if(live_flag) {
-				live_flag = 0; live = 0;
+				live_flag = 0; 
+				live = 0;
 				strcpy(answer_buff, "Stopping Livefeed.");
+			} else {
+				printf("Stopping here?");
+				break; 
 			}
-			//thread_flag = 0;
-			//break; 
         } 
 
 		if(strncmp(argv[0], " ", 1) == 0){strcpy(answer_buff, "\0");}
@@ -651,6 +661,10 @@ void server_chat(int sockfd, int c) {
 		bzero(read_buff, MAX);
     } 
 
+	thread_flag = 0;
+	live_flag = 0; 
+	live = 0;
+	next_flag = 0;
 
 
 	bzero(read_buff, MAX);
@@ -673,8 +687,9 @@ void server_chat(int sockfd, int c) {
 	pthread_join(live_tid, NULL);
 	pthread_join(next_tid, NULL);
 
-	//sem_destroy(&mutex);
+
 	pthread_mutex_destroy(&schedular_mutex);
+	pthread_mutex_destroy(&p_mutex);
 } 
 
 

@@ -35,8 +35,6 @@ typedef struct socket_info_struct
 
 volatile sig_atomic_t sig_flag = 1;
 volatile sig_atomic_t live_flag = 0;
-volatile sig_atomic_t live = 0;
-volatile sig_atomic_t next_flag = 0;
 
 void sigint_handler(int sig){
 	if (live_flag == 1){
@@ -117,7 +115,7 @@ void client_chat(int sockfd){
 
 		socket_info socketpass;
 		socketpass.socket_fd = sockfd;
-		
+
 		while (((w_buff[n++] = getchar()) != '\n') != 0 && sig_flag){}
 
 		strcpy(parse_string, w_buff);
@@ -163,15 +161,17 @@ void client_chat(int sockfd){
 	bzero(w_buff, MAX);
 
 
-	client_exit();
 	strcpy(w_buff, "BYE\n");
 	
 	write(sockfd, w_buff, sizeof(w_buff));
 	
 	bzero(w_buff, MAX);
 	
-	printf("Threads %lu closing.\n", read_tid);
 	free(read_write);
+
+	client_exit();
+	
+	printf("Threads %lu closing.\n", read_tid);
 	pthread_join(read_tid, NULL);
 }
 
@@ -181,29 +181,26 @@ int main(int argc, char *argv[]){
 	struct hostent *he;
 	struct sockaddr_in their_addr; /* connector's address information */
 
-	if (argc != 3)
-	{
+	if (argc != 3){
 		fprintf(stderr, "usage: client hostname & port #\n");
 		exit(1);
 	}
 
-	if ((he = gethostbyname(argv[1])) == NULL)
-	{ /* get the host info */
+	if ((he = gethostbyname(argv[1])) == NULL){ /* get the host info */
 		perror("gethostbyname");
 		exit(1);
 	}
 
-	if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) == -1)
-	{
+	if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) == -1){
 		perror("socket");
 		exit(1);
 	}
 	//port = atoi(argv[2]);
-	if (atoi(argv[2]) == 0)
-	{
+	if (atoi(argv[2]) == 0){
 		perror("port");
 		exit(1);
 	}
+
 	port = atoi(argv[2]);
 
 	their_addr.sin_family = AF_INET;   /* host byte order */
@@ -211,15 +208,12 @@ int main(int argc, char *argv[]){
 	their_addr.sin_addr = *((struct in_addr *)he->h_addr);
 	bzero(&(their_addr.sin_zero), 8); /* zero the rest of the struct */
 
-	if (connect(sockfd, (struct sockaddr *)&their_addr,
-				sizeof(struct sockaddr)) == -1)
-	{
+	if (connect(sockfd, (struct sockaddr *)&their_addr, sizeof(struct sockaddr)) == -1){
 		perror("connect");
 		exit(1);
 	}
 
-	if ((numbytes = recv(sockfd, buf, MAXDATASIZE, 0)) == -1)
-	{
+	if ((numbytes = recv(sockfd, buf, MAXDATASIZE, 0)) == -1){
 		perror("recv");
 		exit(1);
 	}
@@ -234,8 +228,7 @@ int main(int argc, char *argv[]){
 	sa.sa_flags = 0; // or SA_RESTART
 	sigemptyset(&sa.sa_mask);
 
-	if (sigaction(SIGINT, &sa, NULL) == -1)
-	{
+	if (sigaction(SIGINT, &sa, NULL) == -1){
 		perror("sigaction");
 		exit(1);
 	}
