@@ -111,6 +111,7 @@ job* job_insert_before(job *head, int j_id, char* d, job *nxt){
     }
 }
 
+
 job* job_search(job* head, int j_id, char* d){
 
     //start 

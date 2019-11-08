@@ -443,7 +443,10 @@ void server_chat(int sockfd, int c) {
 			break;
 		} 
 
+
+
 		strcpy(answer_buff, "Input Not Found.");
+
 
 		printf(RED);
 			printf("client sent: %s\n", read_buff);
@@ -458,6 +461,9 @@ void server_chat(int sockfd, int c) {
 		} else {
 			channel_id = -1;
 		}
+
+		//remove sig charcters and other nasties
+		string_remove_nonalpha(argv[0]);
 
 		// if msg contains "Exit" then server exit and chat ended. 
         if (strncmp(argv[0], "BYE", 3) == 0) { 

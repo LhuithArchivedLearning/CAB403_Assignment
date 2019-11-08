@@ -13,5 +13,6 @@ char* remove_spaces(char* s);
 int parse_input(char* arg, char* seperator, char** arg_array);
 void clean_up(char ** arg_array, int argc);
 int is_numeric(const char * s);
+void string_remove_nonalpha(char *string);
 
 #endif

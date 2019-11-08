@@ -21,6 +21,20 @@ int extract_digit(char m[]){
 	}
 }
 
+void string_remove_nonalpha(char *string){
+	unsigned long i = 0;
+	unsigned long j = 0;
+	char c;
+
+	while((c = string[i++]) != '\0'){
+		if(isalnum(c)){
+			string[j++] = c;
+		}
+	}
+
+	string[j] = '\0';
+}
+
 char* remove_substring(char* string, const char* sub){
 	char *match = string;
 

@@ -37,13 +37,13 @@ volatile sig_atomic_t sig_flag = 1;
 volatile sig_atomic_t live_flag = 0;
 
 void sigint_handler(int sig){
-	if (live_flag == 1){
+
+	if (live_flag){
 		live_flag = 0;
 
 		char m[32] = "SIG";
 		write(client_socket, m, sizeof(m));
-	}
-	else{
+	}else {
 		sig_flag = 0;
 	}
 }
@@ -62,6 +62,7 @@ void* read_thread(void* struct_pass){
 	bzero(r_buff, MAX);
 
 	while(sig_flag){
+		bzero(r_buff, MAX);
 
 			read(read_write->socket, r_buff, sizeof(r_buff));
 
@@ -71,7 +72,7 @@ void* read_thread(void* struct_pass){
 				printf(RESET);
 			}
 
-			bzero(r_buff, MAX);
+		bzero(r_buff, MAX);
 	}
 
 	bzero(r_buff, MAX);
@@ -107,10 +108,7 @@ void client_chat(int sockfd){
 	int args = 0;
 
 	while (sig_flag){
-		//bzero(r_buff, MAX);
-		fflush(stdin);
 		bzero(w_buff, MAX);
-
 		n = 0, f = 0, args = 0;;
 
 		socket_info socketpass;
@@ -122,12 +120,12 @@ void client_chat(int sockfd){
 
 		args = parse_input(parse_string, " ", argv);
 
-		if ((strncmp(w_buff, "BYE", 3)) == 0){
+		string_remove_nonalpha(argv[0]);
+
+		if ((strncmp(argv[0], "BYE", 3)) == 0){
 			break;
-		} else if ((strncmp(argv[0], "LIVEFEED", 8)) == 0){
-			if(!live_flag){
-				live_flag = 1;
-			}
+		} else if ((strncmp(argv[0], "LIVEFEED", 8)) == 0 && !live_flag){
+			live_flag = 1;
 		} else if ((strncmp(argv[0], "CHANNELS", 8)) == 0){
 
 		} else if ((strncmp(argv[0], "STOP", 4)) == 0){
@@ -138,22 +136,8 @@ void client_chat(int sockfd){
 		} else if ((strncmp(argv[0], "NEXT", 4)) == 0){
 
 		}
-	
-		//reconstructing feed
-		char output[MAX] = "";
-		strcpy(output, argv[0]);
 		
-		if(args > 1) {
-			strcat(output, " ");
-			strcat(output, argv[1]);
-		}
-
-		if(args > 2){
-			strcat(output, " ");
-			strcat(output, argv[2]);
-		} 
-
-		write(sockfd, output, sizeof(output));
+		write(sockfd, w_buff, sizeof(w_buff));
 
 		bzero(w_buff, MAX);
 	}
