@@ -170,10 +170,8 @@ void* poster_thread(void* struct_pass){
 	while(sig_flag && thread_flag) {
 
 		if(tmp_job == NULL && read_write->w->head != NULL){tmp_job = read_write->w->head;} 
-
 	
 		if(tmp_job != NULL){
-		
 			strcpy(m, tmp_job->data);
 			//printf("%s", tmp_job->data);
 			read_write->w->head = remove_job(read_write->w->head, tmp_job);
@@ -181,7 +179,6 @@ void* poster_thread(void* struct_pass){
 		} else {
 			strcpy(m, "\0");
 		}
-
 		 
 			strcpy(w_buff, m);
 			write(read_write->socket, w_buff, sizeof(w_buff));
@@ -190,9 +187,6 @@ void* poster_thread(void* struct_pass){
 
 	printf("Closing Poster.");
 	bzero(w_buff, MAX);
-	//read_write = NULL;
-	//free(read_write);
-	free(tmp_job);
 	pthread_exit(0);
 }
 
@@ -205,7 +199,7 @@ void* livefeed_thread(void* struct_pass){
 	subbed_channel* cursor = NULL;
 
 	while(sig_flag && thread_flag){
-		while (*read_write->live_ptr){
+		while (*read_write->live_ptr && thread_flag){
 			if(cursor == NULL && read_write->c->head != NULL){ cursor = read_write->c->head;} 
 			
 				//sleep(1);
@@ -253,8 +247,10 @@ void* livefeed_thread(void* struct_pass){
 
 							pthread_mutex_lock(&p_mutex);
 								strcat(m, cur_channel->posts[cursor->read_index++].message);
-								read_write->w->head = job_prepend(read_write->w->head, 1, m);
 							pthread_mutex_unlock(&p_mutex);
+
+							read_write->w->head = job_prepend(read_write->w->head, 1, m);
+
 						} else {			
 						}	
 					} else {
@@ -270,10 +266,7 @@ void* livefeed_thread(void* struct_pass){
 			//cursor = NULL;
 		}
 
-	//read_write = NULL;
-	//free(read_write);
 	printf("Closing Live.");
-	free(cursor);
 	pthread_exit(0);
 }
 
@@ -286,7 +279,7 @@ void* next_thread(void* struct_pass){
 	char m[MAX] = "";
 
 	while(sig_flag && thread_flag){
-		if(*read_write->next_flag_ptr){
+		if(*read_write->next_flag_ptr && thread_flag){
 
 			bzero(m, MAX);
 			//sleep(1);
@@ -354,19 +347,14 @@ void* next_thread(void* struct_pass){
 				}
 
 			}
-			//pthread_mutex_lock(&schedular_mutex);
-				read_write->w->head = job_prepend(read_write->w->head, 1, m);
-			//pthread_mutex_unlock(&schedular_mutex);
+			read_write->w->head = job_prepend(read_write->w->head, 1, m);
 
 			*read_write->next_flag_ptr = 0;
 			cursor = NULL;
 		}
 	}
 
-	//read_write = NULL;
-	//free(read_write);
 	printf("Closing Next.");
-	free(cursor);
 	pthread_exit(0);
 }
 	
@@ -439,6 +427,10 @@ void server_chat(int sockfd, int c) {
 		// close the chat 
 		if(read(sockfd, read_buff, sizeof(read_buff)) == -1){
 			thread_flag = 0;
+			live_flag = 0; 
+			live = 0;
+			next_flag = 0;
+			sig_flag = 0;
 			printf("Connection lost, rude client close.\n");
 			break;
 		} 
@@ -490,6 +482,9 @@ void server_chat(int sockfd, int c) {
 					strcpy(answer_buff, "Not Subbed to channel ");
 					//cancat_int
 				} else {
+
+					unsubscribe(new_client, channel_id, answer_buff);
+					
 					if(!live_flag)
 						unsubscribe(new_client, channel_id, answer_buff);
 					else {
@@ -690,7 +685,6 @@ void server_chat(int sockfd, int c) {
 	free(read_write);
 	free(new_client);
 	free(new_worker);
-	free(cursor);
 
 	printf("Threads %lu closing.\n", poster_tid);
 
