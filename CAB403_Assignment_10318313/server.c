@@ -135,6 +135,9 @@ void unsubscribe(client* c, int id, char buff[]){
 	strcpy(buff, message);			
 }
 
+void send_to(client* c, worker* w, int id, char buff[]){
+	
+}
 
 struct read_write_struct{
 	client *c;
@@ -165,24 +168,23 @@ void* poster_thread(void* struct_pass){
 
 	char w_buff[MAX];
 	char m[MAX] = "";
-	job *tmp_job = NULL;
 
 	while(sig_flag && thread_flag) {
+		bzero(m, MAX);
 
-		if(tmp_job == NULL && read_write->w->head != NULL){tmp_job = read_write->w->head;} 
-	
-		if(tmp_job != NULL){
-			strcpy(m, tmp_job->data);
-			//printf("%s", tmp_job->data);
-			read_write->w->head = remove_job(read_write->w->head, tmp_job);
-			tmp_job = read_write->w->head;
+		if(read_write->w->head != NULL){	
+			pthread_mutex_lock(&schedular_mutex);
+				strcpy(m, read_write->w->head->data);
+				read_write->w->head = job_remove_front(read_write->w->head);
+			pthread_mutex_unlock(&schedular_mutex);
 		} else {
 			strcpy(m, "\0");
 		}
 		 
-			strcpy(w_buff, m);
-			write(read_write->socket, w_buff, sizeof(w_buff));
-			bzero(w_buff, MAX);
+		strcpy(w_buff, m);
+		write(read_write->socket, w_buff, sizeof(w_buff));
+
+		bzero(w_buff, MAX);
 	}
 
 	printf("Closing Poster.");
@@ -220,8 +222,9 @@ void* livefeed_thread(void* struct_pass){
 									strcat(m, cur_channel->posts[cursor->read_index++].message);		
 								pthread_mutex_unlock(&p_mutex);
 
-								read_write->w->head = job_prepend(read_write->w->head, 1, m);
-
+								pthread_mutex_lock(&schedular_mutex);
+									read_write->w->head = job_prepend(read_write->w->head, 1, m);
+								pthread_mutex_unlock(&schedular_mutex);
 							} else {
 								//strcpy(m, "\0");
 
@@ -249,8 +252,9 @@ void* livefeed_thread(void* struct_pass){
 								strcat(m, cur_channel->posts[cursor->read_index++].message);
 							pthread_mutex_unlock(&p_mutex);
 
-							read_write->w->head = job_prepend(read_write->w->head, 1, m);
-
+							pthread_mutex_lock(&schedular_mutex);
+								read_write->w->head = job_prepend(read_write->w->head, 1, m);
+							pthread_mutex_unlock(&schedular_mutex);
 						} else {			
 						}	
 					} else {
@@ -435,8 +439,6 @@ void server_chat(int sockfd, int c) {
 			break;
 		} 
 
-
-
 		strcpy(answer_buff, "Input Not Found.");
 
 
@@ -488,7 +490,11 @@ void server_chat(int sockfd, int c) {
 					if(!live_flag)
 						unsubscribe(new_client, channel_id, answer_buff);
 					else {
-						strcpy(answer_buff, "Please close livefeed.");
+
+						live_flag = 0;
+						unsubscribe(new_client, channel_id, answer_buff);
+						live_flag = 1;
+						//strcpy(answer_buff, "Please close livefeed.");
 					}
 				}
 			} else {
@@ -590,11 +596,7 @@ void server_chat(int sockfd, int c) {
 						strcpy(cur_channel->posts[cur_channel->post_index++].message, argv[2]);
 					pthread_mutex_unlock(&p_mutex);
 
-					char message[25] = {"Client #"};
-					cancat_int(message, c);
-					strcat(message, ": ");
-					strcat(message, read_buff);
-					strcpy(answer_buff, "\0");
+					strcpy(answer_buff, "SENT");
 				}			
 
 			}
@@ -631,11 +633,10 @@ void server_chat(int sockfd, int c) {
 						channel_live = 0;
 						break;
 					}
-					//sem_wait(&mutex);
-					//pthread_mutex_lock(&schedular_mutex);
+
+					pthread_mutex_lock(&schedular_mutex);
 						new_worker->head = job_prepend(new_worker->head, 1, m);
-					//pthread_mutex_unlock(&schedular_mutex);
-					//sem_post(&mutex);
+					pthread_mutex_unlock(&schedular_mutex);
 				}
 
 				continue;
@@ -661,7 +662,9 @@ void server_chat(int sockfd, int c) {
 
 		if(strncmp(argv[0], " ", 1) == 0){strcpy(answer_buff, "\0");}
 
-		new_worker->head = job_prepend(new_worker->head, 1, answer_buff);
+		pthread_mutex_lock(&schedular_mutex);
+			new_worker->head = job_prepend(new_worker->head, 1, answer_buff);
+		pthread_mutex_unlock(&schedular_mutex);
 
 		//bzero(answer_buff, MAX);
 		bzero(read_buff, MAX);
