@@ -57,6 +57,24 @@ volatile sig_atomic_t next_flag = 0;
 pthread_mutex_t p_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t schedular_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+
+struct read_write_struct{
+	client *c;
+	worker *w;
+	struct memory* memptr;
+	int live_id;
+	int next_id;
+	int socket;
+
+	
+	volatile sig_atomic_t *sig_flag_ptr;
+	volatile sig_atomic_t *live_flag_ptr;
+	volatile sig_atomic_t *live_ptr;
+	volatile sig_atomic_t *next_flag_ptr;
+
+	volatile sig_atomic_t *thread_flag_ptr;
+};
+
 void sigint_handler(int sig){
 		live_flag = 0;
 		sig_flag = 0;
@@ -82,7 +100,7 @@ void invalid_channel(worker* w, int id){
 }
 
 void not_subbed(worker* w, int id){
-	char m[32] = {"Not subscribed to channel:"};
+	char m[32] = {"Not subscribed to channel "};
 	cancat_int(m, id);
 	add_to_queue(w, m);
 }
@@ -95,6 +113,9 @@ void wrong_args(worker* w){
 	add_to_queue(w, "Wrong Number of Arguments.");
 }
 
+void wrong_values(worker* w){
+	add_to_queue(w, "Please Use Values 0 - 255");
+}
 
 void subscribe(client* c, worker* w, int id){
 		subbed_channel* sub_tmp = NULL;
@@ -136,8 +157,19 @@ void unsubscribe(client* c, worker* w, int id){
 	} else {
 		char m[MAX] = {"Unsubscribing from "};
 
-		c->head = remove_sub(c->head, sub_tmp);
-		traverse(c->head, display);
+		subbed_channel* checker = c->head;
+
+		checker = remove_sub(c->head, sub_tmp);
+
+		//means we subbed from the last channel
+		if(checker == NULL){
+			printf("Last Channel.\n");
+			live_flag = 0;
+			live = 0;
+			c->head = checker;
+		}
+		//traverse(c->head, display);
+		
 
 		cancat_int(m, id);
 		add_to_queue(w, m);
@@ -202,25 +234,6 @@ void channels(client* c, worker* w, int id){
 
 }
 
-
-struct read_write_struct{
-	client *c;
-	worker *w;
-	struct memory* memptr;
-	int live_id;
-	int next_id;
-	int socket;
-
-	
-	volatile sig_atomic_t *sig_flag_ptr;
-	volatile sig_atomic_t *live_flag_ptr;
-	volatile sig_atomic_t *live_ptr;
-	volatile sig_atomic_t *next_flag_ptr;
-
-	volatile sig_atomic_t *thread_flag_ptr;
-};
-
-
 //read worker jobs and send them to client
 void* poster_thread(void* struct_pass){
 	
@@ -262,6 +275,7 @@ void* livefeed_thread(void* struct_pass){
 
 	while(sig_flag && thread_flag){
 		while (*read_write->live_ptr && thread_flag){
+			if(read_write->c->head == NULL){printf("no channels.\n"); break;}
 			if(cursor == NULL && read_write->c->head != NULL){ cursor = read_write->c->head;} 
 			
 				//sleep(1);
@@ -499,15 +513,21 @@ void server_chat(int sockfd, int c) {
 
 
 		printf(RED);
-			printf("client sent: %s\n", read_buff);
+			printf("client sent: %s", read_buff);
 		printf(RESET);
 
 
 		// print buffer which contains the client contents 
 		argc = parse_input(read_buff, " ", argv);
 
+
+		//Channel ID flags, -1 means no channel, -2 means invalid channel
 		if(argc >= 2){
 			channel_id = is_numeric(argv[1]);
+
+			if(channel_id > 254 || channel_id < 0){
+				channel_id = -2;
+			}
 		} else {
 			channel_id = -1;
 		}
@@ -523,9 +543,9 @@ void server_chat(int sockfd, int c) {
 			if(argc < 2){
 				wrong_args(new_worker); 
 			} else {
-				if(channel_id == -1){
-					add_to_queue(new_worker, "Please Use Numerical Values.");
-				} else {
+				if(channel_id == -2){
+					add_to_queue(new_worker, "Please Use Values 0 - 255");
+				} else{
 					subscribe(new_client, new_worker, channel_id);
 				}				
 			}
@@ -539,7 +559,14 @@ void server_chat(int sockfd, int c) {
 				if(tmp_check == NULL){
 					not_subbed(new_worker, channel_id);
 				} else {
-					unsubscribe(new_client, new_worker, channel_id);
+
+					//if we unsubbed from the last channel and still on live,
+					//we have to stop livefeed or lese it explodes :(
+					if(channel_id == -2){
+						wrong_values(new_worker);
+					} else {
+						unsubscribe(new_client, new_worker, channel_id);
+					}
 				}
 			}
 			
@@ -550,35 +577,37 @@ void server_chat(int sockfd, int c) {
 			//Reading LIVEFEED
 			if(new_client->head == NULL){
 				*read_write->next_flag_ptr = 0;
-				add_to_queue(new_worker, "No Channels.");
+				no_subscription(new_worker);
 			} else {
 			
 				read_write->next_id = channel_id;
 				
-				if(channel_id != -1){
-				
-					cursor = search(new_client->head, channel_id);
-
-					if(cursor == NULL){
-				
-						*read_write->next_flag_ptr = 0;
-						add_to_queue(new_worker, "not subbed to channel");
-					} else {
-						*read_write->next_flag_ptr = 1;
-						add_to_queue(new_worker, "\0");
-					}
-				} else {
+				if(channel_id == -1){
+					//Next all
 					*read_write->next_flag_ptr = 1;
 					add_to_queue(new_worker, "\0");
-				}
+				} else {
+					
+					if(channel_id != -2){ 
+						cursor = search(new_client->head, channel_id);
 
+						if(cursor == NULL){
+							*read_write->next_flag_ptr = 0;
+							not_subbed(new_worker, channel_id);
+						} else {
+							*read_write->next_flag_ptr = 1;
+						}
+
+					} else {
+						wrong_values(new_worker);
+					}
+				}
 			}
 			
 			free(next_cursor);
 		} else if (strncmp(argv[0],"LIVEFEED", 8) == 0) {
 
 			if(!live_flag){
-				//Reading LIVEFEED
 				if(new_client->head == NULL){
 					live = 0;
 					live_flag = 0;
@@ -587,29 +616,34 @@ void server_chat(int sockfd, int c) {
 							
 					read_write->live_id = channel_id;
 
-					if(channel_id != -1){
-					
-						cursor = search(new_client->head, channel_id);
+					if(channel_id == -1){
 						
-						if(cursor == NULL){
-							live = 0;
-							live_flag = 0;
-							not_subbed(new_worker, channel_id);
-						} else {
-							live_flag = 1;
-							live = 1;
-
-							char m[MAX] = "Entering Livefeeed: ";
-							cancat_int(m, channel_id);
-							add_to_queue(new_worker, m);
-						}
-
-					} else {
-		
 						live_flag = 1;
 						live = 1;
 						add_to_queue(new_worker, "Entering Livefeeed.");
-					}
+					} else {
+						
+						if (channel_id != -2){
+							cursor = search(new_client->head, channel_id);
+							
+							if(cursor == NULL){
+								live = 0;
+								live_flag = 0;
+								not_subbed(new_worker, channel_id);
+							} else {
+								live_flag = 1;
+								live = 1;
+
+								char m[MAX] = "Entering Livefeeed: ";
+								cancat_int(m, channel_id);
+								add_to_queue(new_worker, m);
+							}
+						} else {
+							wrong_values(new_worker);
+						}
+
+
+					} 
 
 				}
 			} else {
@@ -622,7 +656,11 @@ void server_chat(int sockfd, int c) {
 			if(argc != 3){
 				wrong_args(new_worker);
 			} else {
-				send_to(new_client, new_worker, channel_id, argv[2]);
+				if(channel_id == -2){
+					wrong_values(new_worker);
+				} else {
+					send_to(new_client, new_worker, channel_id, argv[2]);
+				}
 			}
 			
 		} else if (strncmp(argv[0], "CHANNELS", 8) == 0) {
@@ -649,9 +687,7 @@ void server_chat(int sockfd, int c) {
 				printf("Stopping here?");
 				break; 
 			}
-        } else {
-			add_to_queue(new_worker, "Invalid Command.");
-		}
+        } else { add_to_queue(new_worker, "Invalid Command."); }
 
 		bzero(read_buff, MAX);
     } 
