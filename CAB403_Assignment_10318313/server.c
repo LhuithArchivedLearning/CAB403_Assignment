@@ -54,6 +54,9 @@ volatile sig_atomic_t live = 0;
 
 volatile sig_atomic_t next_flag = 0;
 
+pthread_mutex_t p_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t schedular_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 void sigint_handler(int sig){
 		live_flag = 0;
 		sig_flag = 0;
@@ -65,25 +68,35 @@ void sigint_handler(int sig){
 
 struct memory* memptr;
 
-void no_subscription(char m[], char b[]){
-	strcpy(m, "Not subscribed to any channels.");
-	strcat(m, "\n");
-	strcpy(b, m);
+//add to poster queue
+void add_to_queue(worker* w, char* m){
+	pthread_mutex_lock(&schedular_mutex);
+		w->head = job_prepend(w->head, 1, m);
+	pthread_mutex_unlock(&schedular_mutex);
 }
 
-void wrong_args(char b[]){
-	char m[32] = {"Wrong Number of Arguments.\n"};
-	strcpy(b, m);
+void invalid_channel(worker* w, int id){
+	char m[32] = {"Invalid channel:"};
+	cancat_int(m, id);
+	add_to_queue(w, m);
 }
 
-void write_to_buff(char b[], char *s){
-	char m[32];
-	strcpy(m, s);
-	strcat(m, "\n");
-	strcpy(b, m);
+void not_subbed(worker* w, int id){
+	char m[32] = {"Not subscribed to channel:"};
+	cancat_int(m, id);
+	add_to_queue(w, m);
 }
 
-void subscribe(client* c, int id, char buff[]){
+void no_subscription(worker* w){
+	add_to_queue(w, "Not subscribed to any channels.");
+}
+
+void wrong_args(worker* w){
+	add_to_queue(w, "Wrong Number of Arguments.");
+}
+
+
+void subscribe(client* c, worker* w, int id, char buff[]){
 		subbed_channel* sub_tmp = NULL;
 
 		//Passing Subbing information 
@@ -95,7 +108,7 @@ void subscribe(client* c, int id, char buff[]){
 		if(sub_tmp != NULL){
 			strcpy(message, "Already Subscribed to ");
 			cancat_int(message, id);
-			strcpy(buff, message);
+			add_to_queue(w, message);
 			return;
 		}
 
@@ -106,38 +119,89 @@ void subscribe(client* c, int id, char buff[]){
 		c->head->read_index = cur_channel->post_index;
 
 		cancat_int(message, c->head->channel_id);
-
-		strcpy(buff, message);
+		add_to_queue(w, message);
 }
 
-void unsubscribe(client* c, int id, char buff[]){
+void unsubscribe(client* c, worker* w, int id, char buff[]){
 
 	subbed_channel* sub_tmp = NULL;
 
-	char message[32] = {"Unsubscribing from "};
-
-	if(c->head == NULL){
-		no_subscription(message, buff);
-		return;
-	} 
+	char m[MAX] = {"Unsubscribing from "};
 
 	sub_tmp = search(c->head, id);
 
 	if(sub_tmp == NULL){
-		strcpy(message, "Not Subbed to channel ");
+		not_subbed(w, id);
 	} else {
 		c->head = remove_sub(c->head, sub_tmp);
 		traverse(c->head, display);
+
+		cancat_int(m, id);
+		add_to_queue(w, m);
+	}
+}
+
+void send_to(client* c, worker* w, int id, char* arg){
+	
+	char m[MAX] = "";
+
+		// Cant Send a message to -1 ok...
+		if(id < 0 || id > 254){
+			add_to_queue(w, "Please Use Numerical Values 0 to 254.");
+		} else {
+			channel *cur_channel = &memptr->channels[id];
+
+			remove_substring(arg, "\n");
+
+			pthread_mutex_lock(&p_mutex);
+				strcpy(cur_channel->posts[cur_channel->post_index++].message, arg);
+			pthread_mutex_unlock(&p_mutex);
+
+			add_to_queue(w, "SENT");
+		}			
+}
+
+void channels(client* c, worker* w, int id, char* arg){
+
+	//Reading LIVEFEED
+	char m[MAX] = "";
+
+	if(c->head == NULL){
+		no_subscription(w);
+	} else {
+		int channel_live = 1;
+		subbed_channel* cursor = c->head;
+
+		while(channel_live){
+			
+			if(cursor != NULL){
+				
+				channel *cur_channel = &memptr->channels[cursor->channel_id];
+	
+				bzero(m, sizeof(m)); //clear message buffer
+				cancat_int(m, cursor->channel_id);
+				strcat(m, ":");
+				strcat(m, "\t");
+				cancat_int(m, cur_channel->post_index);
+				strcat(m, "\t");
+				cancat_int(m, cursor->read_index);
+				strcat(m, "\t");
+				cancat_int(m, cur_channel->post_index - cursor->read_index);
+				cursor = cursor->next;
+
+			} else { 
+				channel_live = 0;
+				break;
+			}
+
+			add_to_queue(w, m);
+		}
+
+		//continue;
 	}
 
-	cancat_int(message, id);
-
-	strcpy(buff, message);			
 }
 
-void send_to(client* c, worker* w, int id, char buff[]){
-	
-}
 
 struct read_write_struct{
 	client *c;
@@ -156,10 +220,6 @@ struct read_write_struct{
 	volatile sig_atomic_t *thread_flag_ptr;
 };
 
-
-sem_t mutex;
-pthread_mutex_t p_mutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t schedular_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 //read worker jobs and send them to client
 void* poster_thread(void* struct_pass){
@@ -439,7 +499,7 @@ void server_chat(int sockfd, int c) {
 			break;
 		} 
 
-		strcpy(answer_buff, "Input Not Found.");
+		add_to_queue(new_worker, "Input Not Found.");
 
 
 		printf(RED);
@@ -459,49 +519,35 @@ void server_chat(int sockfd, int c) {
 		//remove sig charcters and other nasties
 		string_remove_nonalpha(argv[0]);
 
-		// if msg contains "Exit" then server exit and chat ended. 
+		// if msg contains "BYE" then server exit and chat ended. 
         if (strncmp(argv[0], "BYE", 3) == 0) { 
 			thread_flag = 0;
 			break; 
         } else if (strncmp(argv[0], "SUB", 3) == 0) { 
-			
+
 			if(argc < 2){
-				wrong_args(answer_buff); 
+				wrong_args(new_worker); 
 			} else {
 				if(channel_id == -1){
-					write_to_buff(answer_buff, "Please Use Numerical Values.");
+					add_to_queue(new_worker, "Please Use Numerical Values.");
 				} else {
-					subscribe(new_client, channel_id, answer_buff);
+					subscribe(new_client, new_worker, channel_id, answer_buff);
 				}				
 			}
 		} else if (strncmp(argv[0], "UNSUB", 5) == 0) { 
 			
-
-			if(new_client->head != NULL){
+			if(new_client->head == NULL){ 
+				no_subscription(new_worker);
+			} else {
 				subbed_channel* tmp_check = search(new_client->head, channel_id);
 
 				if(tmp_check == NULL){
-					strcpy(answer_buff, "Not Subbed to channel ");
-					//cancat_int
+					not_subbed(new_worker, channel_id);
 				} else {
-
-					unsubscribe(new_client, channel_id, answer_buff);
-					
-					if(!live_flag)
-						unsubscribe(new_client, channel_id, answer_buff);
-					else {
-
-						live_flag = 0;
-						unsubscribe(new_client, channel_id, answer_buff);
-						live_flag = 1;
-						//strcpy(answer_buff, "Please close livefeed.");
-					}
+					unsubscribe(new_client, new_worker, channel_id, answer_buff);
 				}
-			} else {
-				strcpy(answer_buff, "No Channels.");
 			}
-
-			//free(sub_tmp);
+			
 		} else if (strncmp(argv[0], "NEXT", 4) == 0 && !*read_write->next_flag_ptr) { 
 			
 			subbed_channel *next_cursor = NULL;
@@ -509,7 +555,7 @@ void server_chat(int sockfd, int c) {
 			//Reading LIVEFEED
 			if(new_client->head == NULL){
 				*read_write->next_flag_ptr = 0;
-				strcpy(answer_buff, "No Channels.");
+				add_to_queue(new_worker, "No Channels.");
 			} else {
 			
 				read_write->next_id = channel_id;
@@ -521,14 +567,14 @@ void server_chat(int sockfd, int c) {
 					if(cursor == NULL){
 				
 						*read_write->next_flag_ptr = 0;
-						strcpy(answer_buff, "not subbed to channel");
+						add_to_queue(new_worker, "not subbed to channel");
 					} else {
 						*read_write->next_flag_ptr = 1;
-						strcpy(answer_buff, "\0");
+						add_to_queue(new_worker, "\0");
 					}
 				} else {
 					*read_write->next_flag_ptr = 1;
-					strcpy(answer_buff, "\0");
+					add_to_queue(new_worker, "\0");
 				}
 
 			}
@@ -541,7 +587,7 @@ void server_chat(int sockfd, int c) {
 				if(new_client->head == NULL){
 					live = 0;
 					live_flag = 0;
-					strcpy(answer_buff, "No Channels.");
+					no_subscription(new_worker);
 				} else {
 					
 					
@@ -554,117 +600,101 @@ void server_chat(int sockfd, int c) {
 						if(cursor == NULL){
 							live = 0;
 							live_flag = 0;
-							strcpy(answer_buff, "No Channels");
+							not_subbed(new_worker, channel_id);
 						} else {
 							live_flag = 1;
 							live = 1;
 
-							char m[32] = "Entering Livefeeed: ";
+							char m[MAX] = "Entering Livefeeed: ";
 							cancat_int(m, channel_id);
-
-							strcpy(answer_buff, m);
+							add_to_queue(new_worker, m);
 						}
 
 					} else {
 		
 						live_flag = 1;
 						live = 1;
-						strcpy(answer_buff, "Entering Livefeeed.");
+						add_to_queue(new_worker, "Entering Livefeeed.");
 					}
 
 				}
 			} else {
-				strcpy(answer_buff, "Livefeed already active.");
+				add_to_queue(new_worker, "Livefeed already active.");
 			}
 
 
 		} else if (strncmp(argv[0], "SEND", 4) == 0) { 
 			
 			if(argc != 3){
-				wrong_args(answer_buff);
+				wrong_args(new_worker);
 			} else {
-				
-				// Cant Send a message to -1 ok...
-				if(channel_id < 0 || channel_id > 254){
-					strcpy(answer_buff, "Please Use Numerical Values 0 to 254.\n");
-				} else {
-					channel *cur_channel = &memptr->channels[channel_id];
-
-					remove_substring(argv[2], "\n");
-
-					pthread_mutex_lock(&p_mutex);
-						strcpy(cur_channel->posts[cur_channel->post_index++].message, argv[2]);
-					pthread_mutex_unlock(&p_mutex);
-
-					strcpy(answer_buff, "SENT");
-				}			
-
+				send_to(new_client, new_worker, channel_id, argv[2]);
 			}
-
+			
 		} else if (strncmp(argv[0], "CHANNELS", 8) == 0) { 
-			//Reading LIVEFEED
-			char m[MAX] = "";
-			
+			////Reading LIVEFEED
+			//char m[MAX] = "";
+			//
 
-			if(new_client->head == NULL){
-				strcpy(answer_buff, "No Channels");
-			} else {
-				int channel_live = 1;
-				cursor = new_client->head;
+			//if(new_client->head == NULL){
+			//	add_to_queue(new_worker, "No Channels");
+			//} else {
+			//	int channel_live = 1;
+			//	cursor = new_client->head;
 
-				while(channel_live){
-					
-					if(cursor != NULL){
-						
-						channel *cur_channel = &memptr->channels[cursor->channel_id];
-			
-						bzero(m, sizeof(m)); //clear message buffer
-						cancat_int(m, cursor->channel_id);
-						strcat(m, ":");
-						strcat(m, "\t");
-						cancat_int(m, cur_channel->post_index);
-						strcat(m, "\t");
-						cancat_int(m, cursor->read_index);
-						strcat(m, "\t");
-						cancat_int(m, cur_channel->post_index - cursor->read_index);
-						cursor = cursor->next;
+			//	while(channel_live){
+			//		
+			//		if(cursor != NULL){
+			//			
+			//			channel *cur_channel = &memptr->channels[cursor->channel_id];
+			//
+			//			bzero(m, sizeof(m)); //clear message buffer
+			//			cancat_int(m, cursor->channel_id);
+			//			strcat(m, ":");
+			//			strcat(m, "\t");
+			//			cancat_int(m, cur_channel->post_index);
+			//			strcat(m, "\t");
+			//			cancat_int(m, cursor->read_index);
+			//			strcat(m, "\t");
+			//			cancat_int(m, cur_channel->post_index - cursor->read_index);
+			//			cursor = cursor->next;
 
-					} else { 
-						channel_live = 0;
-						break;
-					}
+			//		} else { 
+			//			channel_live = 0;
+			//			break;
+			//		}
 
-					pthread_mutex_lock(&schedular_mutex);
-						new_worker->head = job_prepend(new_worker->head, 1, m);
-					pthread_mutex_unlock(&schedular_mutex);
-				}
+			//		pthread_mutex_lock(&schedular_mutex);
+			//			new_worker->head = job_prepend(new_worker->head, 1, m);
+			//		pthread_mutex_unlock(&schedular_mutex);
+			//	}
 
-				continue;
-			}
+			//	continue;
+			//}
 		} else if (strncmp(argv[0], "STOP", 4) == 0){
 			if(live_flag){
 				live = 0;
 				live_flag = 0;
-				strcpy(answer_buff, "Stopping Livefeed.");
+				add_to_queue(new_worker, "Stopping Livefeed.");
 			} else {
-				strcpy(answer_buff, "Livefeed not active.");
+				add_to_queue(new_worker, "Livefeed not active.");
 			}
 		} else  if (strncmp(argv[0], "SIG", 3) == 0) { 
 			if(live_flag) {
 				live_flag = 0; 
 				live = 0;
-				strcpy(answer_buff, "Stopping Livefeed.");
+				add_to_queue(new_worker, "Stopping Livefeed.");
 			} else {
 				printf("Stopping here?");
 				break; 
 			}
         } 
 
-		if(strncmp(argv[0], " ", 1) == 0){strcpy(answer_buff, "\0");}
+		if(strncmp(argv[0], " ", 1) == 0){add_to_queue(new_worker, "\0");}
 
-		pthread_mutex_lock(&schedular_mutex);
-			new_worker->head = job_prepend(new_worker->head, 1, answer_buff);
-		pthread_mutex_unlock(&schedular_mutex);
+		//pthread_mutex_lock(&schedular_mutex);
+		//	new_worker->head = job_prepend(new_worker->head, 1, answer_buff);
+		//pthread_mutex_unlock(&schedular_mutex);
 
 		//bzero(answer_buff, MAX);
 		bzero(read_buff, MAX);
