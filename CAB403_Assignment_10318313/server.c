@@ -166,17 +166,18 @@ void unsubscribe(client* c, worker* w, int id){
 
 		subbed_channel* checker = c->head;
 
-		checker = remove_sub(c->head, sub_tmp);
-
-		//means we subbed from the last channel
-		if(checker == NULL){
-			printf("Last Channel.\n");
-			live_flag = 0;
-			live = 0;
-			c->head = checker;
-		}
-		//traverse(c->head, display);
 		
+
+		if(c->head->next == NULL){
+			if(live_flag){
+				live_flag = 0;
+				live = 0;
+			}
+
+		}
+
+		if((c->head = remove_sub(c->head, sub_tmp)) == NULL && live_flag){
+		}		
 
 		cancat_int(m, id);
 		add_to_queue(w, m);
@@ -255,6 +256,7 @@ void* poster_thread(void* struct_pass){
 		if(read_write->w->head != NULL){	
 			pthread_mutex_lock(&schedular_mutex);
 				strcpy(m, read_write->w->head->data);
+				//printf("%s\n", read_write->w->head->data);
 				read_write->w->head = job_remove_front(read_write->w->head);
 			pthread_mutex_unlock(&schedular_mutex);
 		} else {
@@ -267,7 +269,7 @@ void* poster_thread(void* struct_pass){
 		bzero(w_buff, MAX);
 	}
 
-	printf("Closing Poster.");
+	printf("Closing Poster.\n");
 	bzero(w_buff, MAX);
 	pthread_exit(0);
 }
@@ -283,6 +285,7 @@ void* livefeed_thread(void* struct_pass){
 	while(sig_flag && thread_flag){
 		while (*read_write->live_ptr && thread_flag){
 			if(read_write->c->head == NULL){printf("no channels.\n"); break;}
+
 			if(cursor == NULL && read_write->c->head != NULL){ cursor = read_write->c->head;} 
 			
 				//sleep(1);
@@ -313,7 +316,10 @@ void* livefeed_thread(void* struct_pass){
 							}
 						
 						} else {
-								read_write->w->head = job_prepend(read_write->w->head, 1, "No Channels.");
+							no_subscription(read_write->w);
+							break;
+		
+							//read_write->w->head = job_prepend(read_write->w->head, 1, "No Channels.");
 						}
 					//---------------------------------------- READING ALL ---------------------------
 				} else {
@@ -338,8 +344,10 @@ void* livefeed_thread(void* struct_pass){
 						} else {			
 						}	
 					} else {
-
-						read_write->w->head = job_prepend(read_write->w->head, 1, "No Channels.");
+						no_subscription(read_write->w);
+						break;
+						
+						//read_write->w->head = job_prepend(read_write->w->head, 1, "No Channels.");
 
 					}
 					//---------------------------------------- READING CHANNEL ---------------------------
@@ -347,10 +355,15 @@ void* livefeed_thread(void* struct_pass){
 
 			}
 
-			//cursor = NULL;
+			if(cursor != NULL){ 
+				pthread_mutex_lock(&schedular_mutex);
+					read_write->w->head = job_prepend(read_write->w->head, 1, "exiting livefeed\0");
+					cursor = NULL;
+				pthread_mutex_unlock(&schedular_mutex);
+			}
 		}
 
-	printf("Closing Live.");
+	printf("Closing Live.\n");
 	pthread_exit(0);
 }
 
@@ -437,7 +450,7 @@ void* next_thread(void* struct_pass){
 		}
 	}
 
-	printf("Closing Next.");
+	printf("Closing Next.\n");
 	pthread_exit(0);
 }
 	
@@ -688,7 +701,7 @@ void server_chat(int sockfd, int c) {
 			if(live_flag){
 				live = 0;
 				live_flag = 0;
-				add_to_queue(new_worker, "Stopping Livefeed.");
+				//add_to_queue(new_worker, "Stopping Livefeed.");
 			} else {
 				add_to_queue(new_worker, "Livefeed not active.");
 			}
@@ -696,7 +709,7 @@ void server_chat(int sockfd, int c) {
 			if(live_flag) {
 				live_flag = 0; 
 				live = 0;
-				add_to_queue(new_worker, "Stopping Livefeed.");
+				//add_to_queue(new_worker, "Stopping Livefeed.");
 			} else {
 				printf("Stopping here?");
 				break; 

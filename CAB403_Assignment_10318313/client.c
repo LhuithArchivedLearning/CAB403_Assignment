@@ -66,27 +66,33 @@ void* read_thread(void* struct_pass){
 	while(sig_flag){
 			bzero(r_buff, MAX);
 
-			read(read_write->socket, r_buff, sizeof(r_buff));
+			if((read(read_write->socket, r_buff, sizeof(r_buff))) == -1){
+				strcpy(r_buff, "SIG");
+			}
 
-			if(strncmp(r_buff, "SIG", 3) == 0){
+			if(strncmp(r_buff, "exiting", 7) == 0){
+				live_flag = 0;
+				printf(GREEN);
+					fprintf(stdout, "%s\n", r_buff);
+				printf(RESET);
+
+			} else if(strncmp(r_buff, "SIG", 3) == 0){
 				sig_flag = 0;
 				live_flag = 0;
 				input_flag = 0;
 
 				printf(RED);
-					printf("%s\n", "Server Closed.");
+					printf("%s\n", "Lost Connection To Server.");
 				printf(RESET);
 				break;
-			}
-
-			if(strncmp(r_buff, "\0", 2) != 0){
+			} else if(strncmp(r_buff, "\0", 2) != 0){
 				printf(CYAN);
 					fprintf(stdout, "%s\n", r_buff);
 				printf(RESET);
 			} 
 
 			bzero(r_buff, MAX);
-
+			printf(RESET);
 	}
 
 	//bzero(r_buff, MAX);
@@ -122,14 +128,17 @@ void client_chat(int sockfd){
 	int args = 0;
 
 	while (sig_flag){
+		printf(YELLOW);
+
 		bzero(w_buff, MAX);
 		n = 0, f = 0, args = 0;;
 
 		socket_info socketpass;
 		socketpass.socket_fd = sockfd;
 
-		while (((w_buff[n++] = getchar()) != '\n') != 0 && sig_flag){}
-
+		
+			while (((w_buff[n++] = getchar()) != '\n') != 0 && sig_flag){}
+		
 
 		strcpy(parse_string, w_buff);
 
@@ -142,15 +151,14 @@ void client_chat(int sockfd){
 		} else if ((strncmp(argv[0], "LIVEFEED", 8)) == 0 && !live_flag){
 			live_flag = 1;
 		} else if ((strncmp(argv[0], "STOP", 4)) == 0){
-			if(live_flag){
-				live_flag = 0;
-			}
+
 		}
 
 		
 		write(sockfd, w_buff, sizeof(w_buff));
 
 		bzero(w_buff, MAX);
+		printf(RESET);	
 	}
 	
 	read_flag = 0;
