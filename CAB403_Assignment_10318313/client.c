@@ -35,15 +35,17 @@ typedef struct socket_info_struct
 
 volatile sig_atomic_t sig_flag = 1;
 volatile sig_atomic_t live_flag = 0;
+volatile sig_atomic_t read_flag = 1;
+volatile sig_atomic_t input_flag = 1;
 
 void sigint_handler(int sig){
 
 	if (live_flag){
 		live_flag = 0;
 
-		char m[32] = "SIG";
+		char m[3] = "SIG";
 		write(client_socket, m, sizeof(m));
-	}else {
+	} else {
 		sig_flag = 0;
 	}
 }
@@ -62,21 +64,33 @@ void* read_thread(void* struct_pass){
 	bzero(r_buff, MAX);
 
 	while(sig_flag){
-		bzero(r_buff, MAX);
+			bzero(r_buff, MAX);
 
 			read(read_write->socket, r_buff, sizeof(r_buff));
+
+			if(strncmp(r_buff, "SIG", 3) == 0){
+				sig_flag = 0;
+				live_flag = 0;
+				input_flag = 0;
+
+				printf(RED);
+					printf("%s\n", "Server Closed.");
+				printf(RESET);
+				break;
+			}
 
 			if(strncmp(r_buff, "\0", 2) != 0){
 				printf(CYAN);
 					fprintf(stdout, "%s\n", r_buff);
 				printf(RESET);
-			}
+			} 
 
-		bzero(r_buff, MAX);
+			bzero(r_buff, MAX);
+
 	}
 
-	bzero(r_buff, MAX);
-	
+	//bzero(r_buff, MAX);
+	printf("Closing Read Thread.\n");
 	pthread_exit(0);
 }
 
@@ -116,6 +130,7 @@ void client_chat(int sockfd){
 
 		while (((w_buff[n++] = getchar()) != '\n') != 0 && sig_flag){}
 
+
 		strcpy(parse_string, w_buff);
 
 		args = parse_input(parse_string, " ", argv);
@@ -126,37 +141,31 @@ void client_chat(int sockfd){
 			break;
 		} else if ((strncmp(argv[0], "LIVEFEED", 8)) == 0 && !live_flag){
 			live_flag = 1;
-		} else if ((strncmp(argv[0], "CHANNELS", 8)) == 0){
-
 		} else if ((strncmp(argv[0], "STOP", 4)) == 0){
 			if(live_flag){
 				live_flag = 0;
 			}
-				
-		} else if ((strncmp(argv[0], "NEXT", 4)) == 0){
-
 		}
+
 		
 		write(sockfd, w_buff, sizeof(w_buff));
 
 		bzero(w_buff, MAX);
 	}
 	
-	bzero(w_buff, MAX);
-
-
-	strcpy(w_buff, "BYE\n");
-	
-	write(sockfd, w_buff, sizeof(w_buff));
-	
-	bzero(w_buff, MAX);
+	read_flag = 0;
 	
 	free(read_write);
-
-	client_exit();
-	
+		
 	printf("Threads %lu closing.\n", read_tid);
 	pthread_join(read_tid, NULL);
+
+	strcpy(w_buff, "BYE\n");
+	write(sockfd, w_buff, sizeof(w_buff));
+
+	client_exit();
+
+
 }
 
 int main(int argc, char *argv[]){

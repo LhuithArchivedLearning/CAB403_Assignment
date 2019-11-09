@@ -35,6 +35,7 @@ int sockfd, new_fd;
 callback display_channels = display;
 
 volatile int pid_test = 0;
+volatile int global_socket = 0;
 
 void SIGHANDLE(const int sig){
 
@@ -77,10 +78,17 @@ struct read_write_struct{
 
 void sigint_handler(int sig){
 		live_flag = 0;
+		live = 0;
 		sig_flag = 0;
+		next_flag = 0;
 		thread_flag = 0;
 		
 		printf("pid:%d\n", getpid());
+
+		
+		char m[3] = "SIG";
+		write(global_socket, m, sizeof(m));
+
 		if(pid_test == 0){clean_up_shared_mem();}
 }
 
@@ -132,7 +140,6 @@ void subscribe(client* c, worker* w, int id){
 			add_to_queue(w, message);
 		} else {
 
-				
 			char message[MAX] = {"Subscribed to channel "};
 
 			//-------------------------------------
@@ -436,6 +443,8 @@ void* next_thread(void* struct_pass){
 	
 
 void server_chat(int sockfd, int c) { 
+	
+	global_socket = sockfd;
 
     char read_buff[MAX]; 
 	char answer_buff[MAX];
@@ -554,19 +563,24 @@ void server_chat(int sockfd, int c) {
 			if(new_client->head == NULL){ 
 				no_subscription(new_worker);
 			} else {
-				subbed_channel* tmp_check = search(new_client->head, channel_id);
 
-				if(tmp_check == NULL){
-					not_subbed(new_worker, channel_id);
+				if(argc < 2){
+					wrong_args(new_worker); 
 				} else {
 
-					//if we unsubbed from the last channel and still on live,
-					//we have to stop livefeed or lese it explodes :(
 					if(channel_id == -2){
-						wrong_values(new_worker);
+						add_to_queue(new_worker, "Please Use Values 0 - 255");
 					} else {
-						unsubscribe(new_client, new_worker, channel_id);
-					}
+						
+						subbed_channel* tmp_check = search(new_client->head, channel_id);
+
+						if(tmp_check == NULL){
+							not_subbed(new_worker, channel_id);
+						} else {
+							unsubscribe(new_client, new_worker, channel_id);
+						}
+
+					}				
 				}
 			}
 			
