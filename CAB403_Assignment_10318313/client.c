@@ -16,10 +16,9 @@
 #include "worker.h"
 
 #define h_addr h_addr_list[0]
-//#define PORT 54321    /* the port client will be connecting to */
-#define MAXDATASIZE 100 /* max number of bytes we can get at once */
+#define MAXDATASIZE 1024 /* max number of bytes we can get at once */
 
-#define MAX 80
+#define MAX 1026
 
 int client_socket = 0;
 
@@ -137,7 +136,7 @@ void client_chat(int sockfd){
 		socketpass.socket_fd = sockfd;
 
 		
-			while (((w_buff[n++] = getchar()) != '\n') != 0 && sig_flag){}
+		while (((w_buff[n++] = getchar()) != '\n') != 0 && sig_flag){}
 		
 
 		strcpy(parse_string, w_buff);

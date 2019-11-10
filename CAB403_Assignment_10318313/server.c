@@ -27,9 +27,8 @@
 #include "worker.h"
 
 #define h_addr h_addr_list[0]
-//#define MYPORT 54321    /* the port users will be connecting to */
 #define BACKLOG 10     /* how many pending connections queue will hold */
-#define MAX 80 
+#define MAX 1026 
 
 int sockfd, new_fd;
 callback display_channels = display;
@@ -102,13 +101,13 @@ void add_to_queue(worker* w, char* m){
 }
 
 void invalid_channel(worker* w, int id){
-	char m[32] = {"Invalid channel:"};
+	char m[MAX] = {"Invalid channel:"};
 	cancat_int(m, id);
 	add_to_queue(w, m);
 }
 
 void not_subbed(worker* w, int id){
-	char m[32] = {"Not subscribed to channel "};
+	char m[MAX] = {"Not subscribed to channel "};
 	cancat_int(m, id);
 	add_to_queue(w, m);
 }
@@ -276,8 +275,7 @@ void* poster_thread(void* struct_pass){
 void* livefeed_thread(void* struct_pass){
 	
 	struct read_write_struct *read_write = (struct read_write_struct*) struct_pass;
-
-	char m[32] = "";
+	char m[MAX] = "";
 
 	subbed_channel* cursor = NULL;
 
@@ -703,14 +701,20 @@ void server_chat(int sockfd, int c) {
 
 
 		} else if (strncmp(argv[0], "SEND", 4) == 0) { 
-			
+
 			if(argc != 3){
 				wrong_args(new_worker);
 			} else {
 				if(channel_id == -2){
 					wrong_values(new_worker);
 				} else {
-					send_to(new_client, new_worker, channel_id, argv[2]);
+					//1024 - 1 for \0 terminator
+					if(strlen(argv[2]) > 1023){
+						add_to_queue(new_worker, "Message Limit Exceeded");
+					} else {
+						send_to(new_client, new_worker, channel_id, argv[2]);
+					}
+
 				}
 			}
 			

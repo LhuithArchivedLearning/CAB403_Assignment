@@ -1,0 +1,9 @@
+Exception: STATUS_ACCESS_VIOLATION at eip=6112CAC0
+eax=64736164 ebx=64736164 ecx=0061BDD4 edx=6473615C esi=6130BAB4 edi=20000000
+ebp=0061C808 esp=0061BF40 program=C:\Users\Gene-Desktop\Desktop\QUT\Sem_3\CAB403_Assignment\CAB403_Assignment_10318313\client.exe, pid 1156, thread main
+cs=0023 ds=002B es=002B fs=0053 gs=002B ss=002B
+Stack trace:
+Frame     Function  Args
+0061C808  6112CAC0 (00000003, 0061C824, 00000000, 00000000)
+0061CC58  004018DA (64736164, 61647361, 73616473, 64736164)
+End of stack trace
