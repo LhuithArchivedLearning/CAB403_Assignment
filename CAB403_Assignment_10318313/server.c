@@ -28,7 +28,7 @@
 
 #define h_addr h_addr_list[0]
 #define BACKLOG 10     /* how many pending connections queue will hold */
-#define MAX 1026 
+#define MAX 1250 
 
 int sockfd, new_fd;
 callback display_channels = display;

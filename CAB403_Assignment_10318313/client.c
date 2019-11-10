@@ -16,9 +16,9 @@
 #include "worker.h"
 
 #define h_addr h_addr_list[0]
-#define MAXDATASIZE 1024 /* max number of bytes we can get at once */
+#define MAXDATASIZE 1250 /* max number of bytes we can get at once */
 
-#define MAX 1026
+#define MAX 1250
 
 int client_socket = 0;
 
@@ -135,14 +135,19 @@ void client_chat(int sockfd){
 		socket_info socketpass;
 		socketpass.socket_fd = sockfd;
 
+	
+		while (((w_buff[n++] = getchar()) != '\n') != 0 && sig_flag && n <= MAX - 1){}
 		
-		while (((w_buff[n++] = getchar()) != '\n') != 0 && sig_flag){}
-		
+	
 
 		strcpy(parse_string, w_buff);
 
 		args = parse_input(parse_string, " ", argv);
 
+		if(args > 2){
+			if(strlen(argv[2]) > MAX - 1){printf("MAX exceeded.\n");}
+		}
+	
 		string_remove_nonalpha(argv[0]);
 
 		if ((strncmp(argv[0], "BYE", 3)) == 0){
