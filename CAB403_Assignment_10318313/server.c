@@ -194,11 +194,9 @@ void send_to(client* c, worker* w, int id, char* arg){
 			remove_substring(arg, "\n");
 
 			pthread_mutex_lock(&p_mutex);
-
-					
+				sem_wait(&cur_channel->mutex);
 					strcpy(cur_channel->posts[cur_channel->post_index++].message, arg);
-
-
+				sem_post(&cur_channel->mutex);
 			pthread_mutex_unlock(&p_mutex);
 
 			//add_to_queue(w, "SENT");
@@ -303,7 +301,9 @@ void* livefeed_thread(void* struct_pass){
 								strcat(m, ":");
 
 								pthread_mutex_lock(&p_mutex);
-									strcat(m, cur_channel->posts[cursor->read_index++].message);		
+									sem_wait(&cur_channel->mutex);
+										strcat(m, cur_channel->posts[cursor->read_index++].message);		
+									sem_post(&cur_channel->mutex);
 								pthread_mutex_unlock(&p_mutex);
 
 								pthread_mutex_lock(&schedular_mutex);
@@ -336,7 +336,9 @@ void* livefeed_thread(void* struct_pass){
 							strcat(m, ":");
 
 							pthread_mutex_lock(&p_mutex);
-								strcat(m, cur_channel->posts[cursor->read_index++].message);
+								sem_wait(&cur_channel->mutex);
+									strcat(m, cur_channel->posts[cursor->read_index++].message);
+								sem_post(&cur_channel->mutex);
 							pthread_mutex_unlock(&p_mutex);
 
 							pthread_mutex_lock(&schedular_mutex);
@@ -410,7 +412,9 @@ void* next_thread(void* struct_pass){
 							strcat(m, ":");
 							
 							pthread_mutex_lock(&p_mutex);
-								strcat(m, cur_channel->posts[cursor->read_index++].message);
+								sem_wait(&cur_channel->mutex);
+									strcat(m, cur_channel->posts[cursor->read_index++].message);
+								sem_post(&cur_channel->mutex);
 							pthread_mutex_unlock(&p_mutex);
 							
 							break;
@@ -436,7 +440,9 @@ void* next_thread(void* struct_pass){
 						cancat_int(m, cursor->channel_id);
 						strcat(m, ":");
 						pthread_mutex_lock(&p_mutex);
-							strcat(m, cur_channel->posts[cursor->read_index++].message);
+							sem_wait(&cur_channel->mutex);
+								strcat(m, cur_channel->posts[cursor->read_index++].message);
+							sem_post(&cur_channel->mutex);
 						pthread_mutex_unlock(&p_mutex);
 					} else {
 						strcpy(m, "no new message.");
