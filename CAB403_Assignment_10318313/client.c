@@ -30,6 +30,7 @@ void client_exit()
 typedef struct socket_info_struct
 {
 	int socket_fd;
+
 } socket_info;
 
 volatile sig_atomic_t sig_flag = 1;
@@ -52,6 +53,7 @@ void sigint_handler(int sig){
 
 struct read_write_struct{
 	int socket;
+	worker* w;
 };
 
 void* read_thread(void* struct_pass){
@@ -85,9 +87,7 @@ void* read_thread(void* struct_pass){
 				printf(RESET);
 				break;
 			} else if(strncmp(r_buff, "\0", 2) != 0){
-				printf(CYAN);
-					fprintf(stdout, "%s\n", r_buff);
-				printf(RESET);
+				read_write->w->head = job_prepend(read_write->w->head, 1, r_buff);
 			} 
 
 			bzero(r_buff, MAX);
@@ -99,28 +99,51 @@ void* read_thread(void* struct_pass){
 	pthread_exit(0);
 }
 
+void* resolver_thread(void* struct_pass){
+	
+	struct read_write_struct *read_write = (struct read_write_struct*) struct_pass;
 
+	while(sig_flag){
+		if(read_write->w->head != NULL){	
+			printf(CYAN);
+				printf("%s\n", read_write->w->head->data);
+			printf(RESET);
+				read_write->w->head = job_remove_front(read_write->w->head);
+		} else {
+			//printf("%s\n", "poop");
+		}
+	}
+}
 
 void client_chat(int sockfd){
 
-	pthread_t read_tid;
+	pthread_t read_tid, resolver_tid;
 
 	client_socket = sockfd;
 
 	char w_buff[MAX];
 
 	int n = 0, f;
+	
+	worker* new_worker = malloc(sizeof(worker));
+	new_worker->head = NULL;
 
 	//----------------- READ THREAD ----------------------------
 	struct read_write_struct *read_write = malloc(sizeof(struct read_write_struct));
 
 	read_write->socket = sockfd;
+	read_write->w = new_worker;
 
 	pthread_attr_t attr;
 	pthread_attr_init(&attr);
 	pthread_create(&read_tid, &attr, read_thread, read_write);
-	
 	//----------------- READ THREAD ----------------------------
+	
+	//----------------- RESOLVER THREAD ----------------------------
+	pthread_attr_t res_attr;
+	pthread_attr_init(&res_attr);
+	pthread_create(&resolver_tid, &res_attr, resolver_thread, read_write);
+	//----------------- RESOLVER THREAD ----------------------------
 
 	char* argv[5];
 	char parse_string[MAX];
@@ -131,22 +154,15 @@ void client_chat(int sockfd){
 
 		bzero(w_buff, MAX);
 		n = 0, f = 0, args = 0;;
-
-		socket_info socketpass;
-		socketpass.socket_fd = sockfd;
-
 	
 		while (((w_buff[n++] = getchar()) != '\n') != 0 && sig_flag && n <= MAX - 1){}
 		
-	
-
 		strcpy(parse_string, w_buff);
 
 		args = parse_input(parse_string, " ", argv);
 
-		if(args > 2){
-			if(strlen(argv[2]) > MAX - 1){printf("MAX exceeded.\n");}
-		}
+		//not needed but nice
+		if(args > 2){ if(strlen(argv[2]) > 1024){printf("MAX exceeded.\n");}}
 	
 		string_remove_nonalpha(argv[0]);
 
@@ -154,10 +170,7 @@ void client_chat(int sockfd){
 			break;
 		} else if ((strncmp(argv[0], "LIVEFEED", 8)) == 0 && !live_flag){
 			live_flag = 1;
-		} else if ((strncmp(argv[0], "STOP", 4)) == 0){
-
-		}
-
+		} 
 		
 		write(sockfd, w_buff, sizeof(w_buff));
 
@@ -167,10 +180,16 @@ void client_chat(int sockfd){
 	
 	read_flag = 0;
 	
-	free(read_write);
+	
 		
 	printf("Threads %lu closing.\n", read_tid);
 	pthread_join(read_tid, NULL);
+
+	printf("Threads %lu closing.\n", read_tid);
+	pthread_join(resolver_tid, NULL);
+
+	free(read_write);
+	free(new_worker);
 
 	strcpy(w_buff, "BYE\n");
 	write(sockfd, w_buff, sizeof(w_buff));
