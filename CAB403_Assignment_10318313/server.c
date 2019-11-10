@@ -174,6 +174,7 @@ void unsubscribe(client* c, worker* w, int id){
 		}		
 
 		cancat_int(m, id);
+		strcat(m, ".");
 		add_to_queue(w, m);
 	}
 }
@@ -206,32 +207,40 @@ void channels(client* c, worker* w, int id){
 	char m[MAX] = "";
 
 	int channel_live = 1;
-	subbed_channel* cursor = c->head;
 
-	while(channel_live){
-		
-		if(cursor != NULL){
+	if(c->head != NULL){
+		subbed_channel* cursor = c->head;
+
+		while(channel_live){
 			
-			channel *cur_channel = &memptr->channels[cursor->channel_id];
-	
-			bzero(m, sizeof(m)); //clear message buffer
-			cancat_int(m, cursor->channel_id);
-			strcat(m, ":");
-			strcat(m, "\t");
-			cancat_int(m, cur_channel->post_index);
-			strcat(m, "\t");
-			cancat_int(m, cursor->read_index);
-			strcat(m, "\t");
-			cancat_int(m, cur_channel->post_index - cursor->read_index);
-			cursor = cursor->next;
+			if(cursor != NULL){
+				
+				channel *cur_channel = &memptr->channels[cursor->channel_id];
+		
+				bzero(m, sizeof(m)); //clear message buffer
+				cancat_int(m, cursor->channel_id);
+				strcat(m, ":");
+				strcat(m, "\t");
+				cancat_int(m, cur_channel->post_index);
+				strcat(m, "\t");
+				cancat_int(m, cursor->read_index);
+				strcat(m, "\t");
+				cancat_int(m, cur_channel->post_index - cursor->read_index);
+				
+		
+				cursor = cursor->next;
 
-		} else { 
-			channel_live = 0;
-			break;
+			} else { 
+				channel_live = 0;
+				break;
+			}
+
+			add_to_queue(w, m);
 		}
-
-		add_to_queue(w, m);
+	} else {
+		no_subscription(w);
 	}
+
 
 		//continue;
 
@@ -244,17 +253,14 @@ void* poster_thread(void* struct_pass){
 	struct read_write_struct *read_write = (struct read_write_struct*) struct_pass;
 
 	//char w_buff[MAX];
-	//char m[MAX] = "";
 
 	while(sig_flag && thread_flag) {
 	//bzero(w_buff, MAX);
 		if(read_write->w->head != NULL){	
 			
 			pthread_mutex_lock(&schedular_mutex);
-				//memset(m, 0, sizeof(m));
-					//strcpy(m, read_write->w->head->data);
-				//printf("%s\n", m);
-				write(read_write->socket, read_write->w->head->data, strlen(read_write->w->head->data));
+				printf("from schedular: %s", read_write->w->head->data);
+				write(read_write->socket,  read_write->w->head->data, strlen(read_write->w->head->data));
 				//pop the top of the list
 				read_write->w->head = job_remove_front(read_write->w->head);
 			pthread_mutex_unlock(&schedular_mutex);
@@ -637,7 +643,7 @@ void server_chat(int sockfd, int c) {
 				if(channel_id == -1){
 					//Next all
 					*read_write->next_flag_ptr = 1;
-					add_to_queue(new_worker, "\0");
+					//add_to_queue(new_worker, "\0");
 				} else {
 					
 					if(channel_id != -2){ 

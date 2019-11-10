@@ -16,8 +16,9 @@ job* job_create(int j_id, char* d, job* next){
 
     new_job->job_id = j_id;
     new_job->next = next;
-    new_job->data = malloc(strlen(d));
+    new_job->data = malloc(strlen(d) + 1);
     strcpy(new_job->data, d);
+    strcat(new_job->data, "\n");
     return new_job;
 }
 

@@ -35,8 +35,7 @@ typedef struct socket_info_struct
 
 volatile sig_atomic_t sig_flag = 1;
 volatile sig_atomic_t live_flag = 0;
-volatile sig_atomic_t read_flag = 1;
-volatile sig_atomic_t input_flag = 1;
+
 
 void sigint_handler(int sig){
 
@@ -66,36 +65,49 @@ struct read_write_struct *read_write = (struct read_write_struct*) struct_pass;
 
 	bzero(r_buff, MAX);
 
+	
 	while(sig_flag){
+
+			char* argv[100];
+			char parse_string[MAX];
+			int args = 0;
+
 			bzero(r_buff, MAX);
 
 			if((read(read_write->socket, r_buff, sizeof(r_buff))) == -1){
 				strcpy(r_buff, "SIG");
 			}
 
+			//strcpy(parse_string, r_buff);
+
+			//args = parse_input(parse_string, ".", argv);
+			
+			//if(args > 2){
+			//	printf("2 responses");
+			//}
+
 			if(strncmp(r_buff, "exiting", 7) == 0){
 				live_flag = 0;
 				printf(GREEN);
-					fprintf(stdout, "%s\n", r_buff);
+					fprintf(stdout, "%s", r_buff);
 				printf(RESET);
 
 			} else if(strncmp(r_buff, "SIG", 3) == 0){
 				sig_flag = 0;
 				live_flag = 0;
-				input_flag = 0;
 
 				printf(RED);
 					printf("%s\n", "Lost Connection To Server.");
 				printf(RESET);
 				break;
 			} else if(strncmp(r_buff, "\0", 2) != 0){
-				printf(CYAN);
-					fprintf(stdout, "%s\n", r_buff);
-				printf(RESET);
+				fprintf(stdout, CYAN);
+					fprintf(stdout, "%s", r_buff);
+				fprintf(stdout, RESET);
 			} 
 
 			bzero(r_buff, MAX);
-			printf(RESET);
+			fprintf(stdout, RESET);
 	}
 
 	//bzero(r_buff, MAX);
@@ -168,7 +180,7 @@ void client_chat(int sockfd){
 	int args = 0;
 
 	while (sig_flag){
-	
+			fprintf(stdout, RESET);
 			bzero(w_buff, MAX);
 			n = 0, f = 0, args = 0;
 
@@ -186,7 +198,9 @@ void client_chat(int sockfd){
 			string_remove_nonalpha(argv[0]);
 
 			if ((strncmp(argv[0], "BYE", 3)) == 0){
-				break;
+				sig_flag = 0;
+				live_flag = 0;
+				//break;
 			} else if ((strncmp(argv[0], "LIVEFEED", 8)) == 0 && !live_flag){
 				live_flag = 1;
 			} 
@@ -196,15 +210,11 @@ void client_chat(int sockfd){
 			bzero(w_buff, MAX);
 
 	}
-	
-	read_flag = 0;
-	
-	
-		
+
 	printf("Threads %lu closing.\n", read_tid);
 	pthread_join(read_tid, NULL);
 
-	printf("Threads %lu closing.\n", read_tid);
+//	printf("Threads %lu closing.\n", read_tid);
 //	pthread_join(resolver_tid, NULL);
 
 	free(read_write);
