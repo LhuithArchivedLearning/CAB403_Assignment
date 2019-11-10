@@ -302,13 +302,16 @@ void* livefeed_thread(void* struct_pass){
 
 								pthread_mutex_lock(&p_mutex);
 									sem_wait(&cur_channel->mutex);
-										strcat(m, cur_channel->posts[cursor->read_index++].message);		
+										strcat(m, cur_channel->posts[cursor->read_index++].message);
+
+										pthread_mutex_lock(&schedular_mutex);
+											read_write->w->head = job_prepend(read_write->w->head, 1, m);
+										pthread_mutex_unlock(&schedular_mutex);		
+
 									sem_post(&cur_channel->mutex);
 								pthread_mutex_unlock(&p_mutex);
 
-								pthread_mutex_lock(&schedular_mutex);
-									read_write->w->head = job_prepend(read_write->w->head, 1, m);
-								pthread_mutex_unlock(&schedular_mutex);
+	
 							} else {
 								//strcpy(m, "\0");
 
