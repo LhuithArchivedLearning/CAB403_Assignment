@@ -257,6 +257,7 @@ void* poster_thread(void* struct_pass){
 		if(read_write->w->head != NULL){	
 			pthread_mutex_lock(&schedular_mutex);
 				strcpy(m, read_write->w->head->data);
+				printf("%s\n", m);
 				read_write->w->head = job_remove_front(read_write->w->head);
 			pthread_mutex_unlock(&schedular_mutex);
 		} else {
