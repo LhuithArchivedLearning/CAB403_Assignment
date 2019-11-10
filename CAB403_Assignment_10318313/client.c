@@ -70,28 +70,26 @@ void* read_thread(void* struct_pass){
 			bzero(r_buff, MAX);
 
 			
-				if((read(read_write->socket, r_buff, sizeof(r_buff))) == -1){
-					strcpy(r_buff, "SIG");
-				}
+				if((read(read_write->socket, r_buff, sizeof(r_buff))) == -1){ strcpy(r_buff, "SIG");}
+
 			pthread_mutex_lock(&schedular_mutex);
+
 				if(strncmp(r_buff, "exiting", 7) == 0){
 					live_flag = 0;
-					printf(GREEN);
-						fprintf(stdout, "%s\n", r_buff);
-					printf(RESET);
-
+					read_write->w->head = job_prepend(read_write->w->head, 2, r_buff);
 				} else if(strncmp(r_buff, "SIG", 3) == 0){
 					sig_flag = 0;
 					live_flag = 0;
 					input_flag = 0;
 
 					printf(RED);
-						printf("%s\n", "Lost Connection To Server.");
+						fprintf(stdout, "%s\n", "Lost Connection To Server.");
 					printf(RESET);
+
 					break;
 				} else if(strncmp(r_buff, "\0", 2) != 0){
 		
-						read_write->w->head = job_prepend(read_write->w->head, 1, r_buff);
+					read_write->w->head = job_prepend(read_write->w->head, 1, r_buff);
 					
 				} 
 			pthread_mutex_unlock(&schedular_mutex);
@@ -111,18 +109,28 @@ void* resolver_thread(void* struct_pass){
 
 	while(sig_flag){
 		if(read_write->w->head != NULL){	
-			printf(CYAN);
-			pthread_mutex_lock(&schedular_mutex);
-				printf("%s\n", read_write->w->head->data);
-				read_write->w->head = job_remove_front(read_write->w->head);
-			pthread_mutex_unlock(&schedular_mutex);
-			printf(RESET);
+				pthread_mutex_lock(&schedular_mutex);
+					 if(read_write->w->head->job_id == 2){
+						printf(GREEN);
+					} else if(read_write->w->head->job_id == 3){
+						printf(RED);
+					} else {
+						printf(CYAN);
+					}
+		
+						printf("%s\n", read_write->w->head->data);
+						read_write->w->head = job_remove_front(read_write->w->head);
+					printf(RESET);
+				pthread_mutex_unlock(&schedular_mutex);
 		} else {
 			//printf("%s\n", "poop");
 		}
 
 		//printf(RESET);
 	}
+
+	printf("Closing Resolver Thread.\n");
+	pthread_exit(0);
 }
 
 void client_chat(int sockfd){
