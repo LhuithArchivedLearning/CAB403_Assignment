@@ -6,7 +6,6 @@
 //The Actual Message/Post
 typedef struct POST_STRUCT{
 	char read; //0 or 1 //read or not read
-    sem_t mutex; //set up critical section for posts
 	char message[1024];
 } post;
 
@@ -14,7 +13,7 @@ typedef struct CHANNEL_STRUCT{
 
     post posts[255];
     int post_index;
-    //int read_index;
+    sem_t mutex; //set up critical section for channel
 
 } channel;
 

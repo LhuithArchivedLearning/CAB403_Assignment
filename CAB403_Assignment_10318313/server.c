@@ -166,14 +166,11 @@ void unsubscribe(client* c, worker* w, int id){
 
 		subbed_channel* checker = c->head;
 
-		
-
 		if(c->head->next == NULL){
 			if(live_flag){
 				live_flag = 0;
 				live = 0;
 			}
-
 		}
 
 		if((c->head = remove_sub(c->head, sub_tmp)) == NULL && live_flag){
@@ -197,7 +194,11 @@ void send_to(client* c, worker* w, int id, char* arg){
 			remove_substring(arg, "\n");
 
 			pthread_mutex_lock(&p_mutex);
-				strcpy(cur_channel->posts[cur_channel->post_index++].message, arg);
+
+					
+					strcpy(cur_channel->posts[cur_channel->post_index++].message, arg);
+
+
 			pthread_mutex_unlock(&p_mutex);
 
 			//add_to_queue(w, "SENT");
@@ -256,7 +257,6 @@ void* poster_thread(void* struct_pass){
 		if(read_write->w->head != NULL){	
 			pthread_mutex_lock(&schedular_mutex);
 				strcpy(m, read_write->w->head->data);
-				//printf("%s\n", read_write->w->head->data);
 				read_write->w->head = job_remove_front(read_write->w->head);
 			pthread_mutex_unlock(&schedular_mutex);
 		} else {
@@ -465,8 +465,6 @@ void server_chat(int sockfd, int c) {
 	int argc, channel_id = 0, num_jobs = 0;
 	
 	pthread_t poster_tid, live_tid, next_tid;
-	//sem_t r_mutex;
-	//sem_t w_mutex;
 	
 	//-------------- Client Struct -------------------------
 	client* new_client = malloc(sizeof(client));
@@ -767,8 +765,8 @@ int main(int argc, char *argv[]){
 	}
 
 	if(argc < 2){
-		fprintf(stderr,"using defualt port: 10000\n");
-		port = 10000;
+		fprintf(stderr,"using defualt port: 12345\n");
+		port = 12345;
 		//exit(1);
 	} else {
 		//port = atoi(argv[2]);
@@ -799,8 +797,6 @@ int main(int argc, char *argv[]){
 	/* repeat: accept, send, close the connection */
 	/* for every accepted connection, use a sepetate process or thread to serve it */
 
-	
-					
 	void sigint_handler(int sig); /*prototype*/
 	struct sigaction sa;
 

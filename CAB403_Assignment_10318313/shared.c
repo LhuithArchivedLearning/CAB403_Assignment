@@ -9,6 +9,7 @@
 #include <string.h>
 #include <semaphore.h>
 #include "shared_mem_struct.h"
+#include <semaphore.h>
 
 int fd;
 char* memaddr;
@@ -28,6 +29,13 @@ void* create_shared_mem(char* addr){
     memptr = mmap(NULL, struct_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     if(memptr == MAP_FAILED){perror("memory allocation error: "); exit(0);}
     
+    size_t n = sizeof(memptr->channels)/sizeof(memptr->channels[0]);
+    
+    //initing mutex locks per channel
+    for(int i = 0; i < n; i++){
+        sem_init(&memptr->channels[i].mutex, 0, 0);
+    }
+
     close(fd);
     printf("Memory Block Created: %d\n", struct_size);
     return memptr;
@@ -35,6 +43,14 @@ void* create_shared_mem(char* addr){
 
 
 void clean_up_shared_mem(){
+
+    size_t n = sizeof(memptr->channels)/sizeof(memptr->channels[0]);
+    
+    //destroying mutex locks per channel
+    for(int i = 0; i < n; i++){
+        sem_destroy(&memptr->channels[i].mutex);
+    }
+
     munmap(memptr, sizeof(struct memory));
     shm_unlink(memaddr);
     printf("Memory Block Cleared\n");
