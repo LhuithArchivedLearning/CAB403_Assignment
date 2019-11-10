@@ -56,6 +56,8 @@ struct read_write_struct{
 	worker* w;
 };
 
+pthread_mutex_t schedular_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 void* read_thread(void* struct_pass){
 	
 	struct read_write_struct *read_write = (struct read_write_struct*) struct_pass;
@@ -67,31 +69,35 @@ void* read_thread(void* struct_pass){
 	while(sig_flag){
 			bzero(r_buff, MAX);
 
-			if((read(read_write->socket, r_buff, sizeof(r_buff))) == -1){
-				strcpy(r_buff, "SIG");
-			}
+			
+				if((read(read_write->socket, r_buff, sizeof(r_buff))) == -1){
+					strcpy(r_buff, "SIG");
+				}
+			pthread_mutex_lock(&schedular_mutex);
+				if(strncmp(r_buff, "exiting", 7) == 0){
+					live_flag = 0;
+					printf(GREEN);
+						fprintf(stdout, "%s\n", r_buff);
+					printf(RESET);
 
-			if(strncmp(r_buff, "exiting", 7) == 0){
-				live_flag = 0;
-				printf(GREEN);
-					fprintf(stdout, "%s\n", r_buff);
-				printf(RESET);
+				} else if(strncmp(r_buff, "SIG", 3) == 0){
+					sig_flag = 0;
+					live_flag = 0;
+					input_flag = 0;
 
-			} else if(strncmp(r_buff, "SIG", 3) == 0){
-				sig_flag = 0;
-				live_flag = 0;
-				input_flag = 0;
-
-				printf(RED);
-					printf("%s\n", "Lost Connection To Server.");
-				printf(RESET);
-				break;
-			} else if(strncmp(r_buff, "\0", 2) != 0){
-				read_write->w->head = job_prepend(read_write->w->head, 1, r_buff);
-			} 
+					printf(RED);
+						printf("%s\n", "Lost Connection To Server.");
+					printf(RESET);
+					break;
+				} else if(strncmp(r_buff, "\0", 2) != 0){
+		
+						read_write->w->head = job_prepend(read_write->w->head, 1, r_buff);
+					
+				} 
+			pthread_mutex_unlock(&schedular_mutex);
 
 			bzero(r_buff, MAX);
-			printf(RESET);
+			//printf(RESET);
 	}
 
 	//bzero(r_buff, MAX);
@@ -106,12 +112,16 @@ void* resolver_thread(void* struct_pass){
 	while(sig_flag){
 		if(read_write->w->head != NULL){	
 			printf(CYAN);
+			pthread_mutex_lock(&schedular_mutex);
 				printf("%s\n", read_write->w->head->data);
-			printf(RESET);
 				read_write->w->head = job_remove_front(read_write->w->head);
+			pthread_mutex_unlock(&schedular_mutex);
+			printf(RESET);
 		} else {
 			//printf("%s\n", "poop");
 		}
+
+		//printf(RESET);
 	}
 }
 
@@ -150,8 +160,6 @@ void client_chat(int sockfd){
 	int args = 0;
 
 	while (sig_flag){
-		printf(YELLOW);
-
 		bzero(w_buff, MAX);
 		n = 0, f = 0, args = 0;;
 	
@@ -175,7 +183,6 @@ void client_chat(int sockfd){
 		write(sockfd, w_buff, sizeof(w_buff));
 
 		bzero(w_buff, MAX);
-		printf(RESET);	
 	}
 	
 	read_flag = 0;
@@ -193,7 +200,7 @@ void client_chat(int sockfd){
 
 	strcpy(w_buff, "BYE\n");
 	write(sockfd, w_buff, sizeof(w_buff));
-
+	pthread_mutex_destroy(&schedular_mutex);
 	client_exit();
 
 

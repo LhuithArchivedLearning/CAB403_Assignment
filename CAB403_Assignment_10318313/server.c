@@ -243,30 +243,33 @@ void* poster_thread(void* struct_pass){
 	
 	struct read_write_struct *read_write = (struct read_write_struct*) struct_pass;
 
-	char w_buff[MAX];
-	char m[MAX] = "";
+	//char w_buff[MAX];
+	//char m[MAX] = "";
 
 	while(sig_flag && thread_flag) {
-
+	//bzero(w_buff, MAX);
 		if(read_write->w->head != NULL){	
+			
 			pthread_mutex_lock(&schedular_mutex);
-				memset(m, 0, sizeof(m));
-				strcpy(m, read_write->w->head->data);
-				printf("%s\n", m);
+				//memset(m, 0, sizeof(m));
+					//strcpy(m, read_write->w->head->data);
+				//printf("%s\n", m);
+				write(read_write->socket, read_write->w->head->data, strlen(read_write->w->head->data));
+				//pop the top of the list
 				read_write->w->head = job_remove_front(read_write->w->head);
 			pthread_mutex_unlock(&schedular_mutex);
 		} else {
-			strcpy(m, "\0");
+			//strcpy(m, "\0");
 		}
 		 
-		strcpy(w_buff, m);
-		write(read_write->socket, w_buff, sizeof(w_buff));
+		//strcpy(w_buff, m);
+		//write(read_write->socket, w_buff, sizeof(w_buff));
 
-		bzero(w_buff, MAX);
+		//bzero(w_buff, MAX);
 	}
 
 	printf("Closing Poster.\n");
-	bzero(w_buff, MAX);
+	//bzero(w_buff, MAX);
 	pthread_exit(0);
 }
 
