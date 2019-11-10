@@ -64,34 +64,20 @@ struct read_write_struct *read_write = (struct read_write_struct*) struct_pass;
 	char r_buff[MAX];
 
 	bzero(r_buff, MAX);
-
-	
 	while(sig_flag){
-
-			char* argv[100];
-			char parse_string[MAX];
-			int args = 0;
-
 			bzero(r_buff, MAX);
 
 			if((read(read_write->socket, r_buff, sizeof(r_buff))) == -1){
 				strcpy(r_buff, "SIG");
 			}
 
-			//strcpy(parse_string, r_buff);
-
-			//args = parse_input(parse_string, ".", argv);
-			
-			//if(args > 2){
-			//	printf("2 responses");
-			//}
-
 			if(strncmp(r_buff, "exiting", 7) == 0){
 				live_flag = 0;
 				printf(GREEN);
 					fprintf(stdout, "%s", r_buff);
 				printf(RESET);
-
+				fflush(stdout);
+				
 			} else if(strncmp(r_buff, "SIG", 3) == 0){
 				sig_flag = 0;
 				live_flag = 0;
@@ -99,15 +85,18 @@ struct read_write_struct *read_write = (struct read_write_struct*) struct_pass;
 				printf(RED);
 					printf("%s\n", "Lost Connection To Server.");
 				printf(RESET);
+				fflush(stdout);
+
 				break;
 			} else if(strncmp(r_buff, "\0", 2) != 0){
-				fprintf(stdout, CYAN);
+				printf(CYAN);
 					fprintf(stdout, "%s", r_buff);
-				fprintf(stdout, RESET);
+					
+				printf(RESET);
+				fflush(stdout);
 			} 
 
 			bzero(r_buff, MAX);
-			fprintf(stdout, RESET);
 	}
 
 	//bzero(r_buff, MAX);
@@ -115,35 +104,6 @@ struct read_write_struct *read_write = (struct read_write_struct*) struct_pass;
 	pthread_exit(0);
 }
 
-void* resolver_thread(void* struct_pass){
-	
-	struct read_write_struct *read_write = (struct read_write_struct*) struct_pass;
-
-	while(sig_flag){
-		if(read_write->w->head != NULL){	
-			//	pthread_mutex_lock(&schedular_mutex);
-					// if(read_write->w->head->job_id == 2){
-					//	printf(GREEN);
-					//} else if(read_write->w->head->job_id == 3){
-					//	printf(RED);
-					//} else {
-					//	printf(CYAN);
-					//}
-		
-						printf("%s\n", read_write->w->head->data);
-						read_write->w->head = job_remove_front(read_write->w->head);
-					//printf(RESET);
-			//	pthread_mutex_unlock(&schedular_mutex);
-		} else {
-			//printf("%s\n", "poop");
-		}
-
-		//printf(RESET);
-	}
-
-	printf("Closing Resolver Thread.\n");
-	pthread_exit(0);
-}
 
 void client_chat(int sockfd){
 
@@ -169,25 +129,19 @@ void client_chat(int sockfd){
 	pthread_create(&read_tid, &attr, read_thread, read_write);
 	//----------------- READ THREAD ----------------------------
 	
-	//----------------- RESOLVER THREAD ----------------------------
-	//pthread_attr_t res_attr;
-	//pthread_attr_init(&res_attr);
-	//pthread_create(&resolver_tid, &res_attr, resolver_thread, read_write);
-	//----------------- RESOLVER THREAD ----------------------------
 
 	char* argv[5];
 	char parse_string[MAX];
 	int args = 0;
 
 	while (sig_flag){
-			fprintf(stdout, RESET);
+			fprintf(stdin, GREEN, GREEN);
+
 			bzero(w_buff, MAX);
 			n = 0, f = 0, args = 0;
 
-			printf(RESET);
-				while (((w_buff[n++] = getchar()) != '\n') != 0 && sig_flag && n <= MAX - 1){}
-			printf(RESET);
-			
+			while (((w_buff[n++] = getchar()) != '\n') != 0 && sig_flag && n <= MAX - 1){}
+
 			strcpy(parse_string, w_buff);
 
 			args = parse_input(parse_string, " ", argv);
@@ -208,21 +162,16 @@ void client_chat(int sockfd){
 			write(sockfd, w_buff, sizeof(w_buff));
 
 			bzero(w_buff, MAX);
-
 	}
 
 	printf("Threads %lu closing.\n", read_tid);
 	pthread_join(read_tid, NULL);
 
-//	printf("Threads %lu closing.\n", read_tid);
-//	pthread_join(resolver_tid, NULL);
 
 	free(read_write);
-	//free(new_worker);
 
 	strcpy(w_buff, "BYE\n");
 	write(sockfd, w_buff, sizeof(w_buff));
-	//pthread_mutex_destroy(&schedular_mutex);
 	client_exit();
 
 
