@@ -13,7 +13,6 @@
 #include <signal.h>
 #include "printf_helper.h"
 #include "helper.h"
-#include "worker.h"
 
 #define h_addr h_addr_list[0]
 #define MAXDATASIZE 1250 /* max number of bytes we can get at once */
@@ -52,14 +51,15 @@ void sigint_handler(int sig){
 
 struct read_write_struct{
 	int socket;
-	worker* w;
 };
 
-//pthread_mutex_t schedular_mutex = PTHREAD_MUTEX_INITIALIZER;
-
+//Read thread that listens in the background, 
+//SIG comes from server connection close
+//Exiting comes from live thread closing from server
+//else it will print responses from the server
 void* read_thread(void* struct_pass){
 	
-struct read_write_struct *read_write = (struct read_write_struct*) struct_pass;
+	struct read_write_struct *read_write = (struct read_write_struct*) struct_pass;
 
 	char r_buff[MAX];
 
@@ -77,7 +77,7 @@ struct read_write_struct *read_write = (struct read_write_struct*) struct_pass;
 					fprintf(stdout, "%s", r_buff);
 				printf(RESET);
 				fflush(stdout);
-				
+
 			} else if(strncmp(r_buff, "SIG", 3) == 0){
 				sig_flag = 0;
 				live_flag = 0;
@@ -99,7 +99,6 @@ struct read_write_struct *read_write = (struct read_write_struct*) struct_pass;
 			bzero(r_buff, MAX);
 	}
 
-	//bzero(r_buff, MAX);
 	printf("Closing Read Thread.\n");
 	pthread_exit(0);
 }
@@ -115,14 +114,10 @@ void client_chat(int sockfd){
 
 	int n = 0, f;
 	
-	//worker* new_worker = malloc(sizeof(worker));
-	//new_worker->head = NULL;
-
 	//----------------- READ THREAD ----------------------------
 	struct read_write_struct *read_write = malloc(sizeof(struct read_write_struct));
 
 	read_write->socket = sockfd;
-	//read_write->w = new_worker;
 
 	pthread_attr_t attr;
 	pthread_attr_init(&attr);
@@ -135,7 +130,6 @@ void client_chat(int sockfd){
 	int args = 0;
 
 	while (sig_flag){
-			fprintf(stdin, GREEN, GREEN);
 
 			bzero(w_buff, MAX);
 			n = 0, f = 0, args = 0;
@@ -146,35 +140,35 @@ void client_chat(int sockfd){
 
 			args = parse_input(parse_string, " ", argv);
 
-			//not needed but nice
+			//not needed but nice, incase message is large then post size
 			if(args > 2){ if(strlen(argv[2]) > 1024){printf("MAX exceeded.\n");}}
-		
+
+			//get rid of any symbols from sig catch 
 			string_remove_nonalpha(argv[0]);
 
+			//close client loop and begin closing process
 			if ((strncmp(argv[0], "BYE", 3)) == 0){
 				sig_flag = 0;
 				live_flag = 0;
-				//break;
-			} else if ((strncmp(argv[0], "LIVEFEED", 8)) == 0 && !live_flag){
+			} else if ((strncmp(argv[0], "LIVEFEED", 8)) == 0 && !live_flag) {
 				live_flag = 1;
 			} 
 			
 			write(sockfd, w_buff, sizeof(w_buff));
-
 			bzero(w_buff, MAX);
 	}
 
 	printf("Threads %lu closing.\n", read_tid);
 	pthread_join(read_tid, NULL);
 
-
 	free(read_write);
-
+	
+	//final bye incase server is still listening
 	strcpy(w_buff, "BYE\n");
 	write(sockfd, w_buff, sizeof(w_buff));
+	bzero(w_buff, MAX);
+	
 	client_exit();
-
-
 }
 
 int main(int argc, char *argv[]){
