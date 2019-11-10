@@ -252,10 +252,10 @@ void* poster_thread(void* struct_pass){
 	char m[MAX] = "";
 
 	while(sig_flag && thread_flag) {
-		bzero(m, MAX);
 
 		if(read_write->w->head != NULL){	
 			pthread_mutex_lock(&schedular_mutex);
+				memset(m, 0, sizeof(m));
 				strcpy(m, read_write->w->head->data);
 				printf("%s\n", m);
 				read_write->w->head = job_remove_front(read_write->w->head);
