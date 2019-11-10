@@ -33,7 +33,7 @@ void* create_shared_mem(char* addr){
     
     //initing mutex locks per channel
     for(int i = 0; i < n; i++){
-        sem_init(&memptr->channels[i].mutex, 0, i);
+        sem_init(&memptr->channels[i].mutex, i, 0);
     }
 
     close(fd);
