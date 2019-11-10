@@ -16,7 +16,7 @@ job* job_create(int j_id, char* d, job* next){
 
     new_job->job_id = j_id;
     new_job->next = next;
-    new_job->data = malloc(sizeof(d));
+    new_job->data = malloc(strlen(d));
     strcpy(new_job->data, d);
     return new_job;
 }
@@ -24,7 +24,6 @@ job* job_create(int j_id, char* d, job* next){
 //ad to the front
 job* job_prepend(job* head, int j_id, char* d){
     job* new_job = job_create(j_id, d, head);
-    //printf("%s", d);
     head = new_job;
     return head;
 }

@@ -56,7 +56,7 @@ struct read_write_struct{
 	worker* w;
 };
 
-pthread_mutex_t schedular_mutex = PTHREAD_MUTEX_INITIALIZER;
+//pthread_mutex_t schedular_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 void* read_thread(void* struct_pass){
 	
@@ -69,36 +69,36 @@ void* read_thread(void* struct_pass){
 	while(sig_flag){
 			bzero(r_buff, MAX);
 
-			
-				if((read(read_write->socket, r_buff, sizeof(r_buff))) == -1){ strcpy(r_buff, "SIG");}
+			if((read(read_write->socket, r_buff, sizeof(r_buff))) == -1){
+				strcpy(r_buff, "SIG");
+			}
 
-			pthread_mutex_lock(&schedular_mutex);
+			if(strncmp(r_buff, "exiting", 7) == 0){
+				live_flag = 0;
+				printf(GREEN);
+					fprintf(stdout, "%s\n", r_buff);
+				printf(RESET);
 
-				if(strncmp(r_buff, "exiting", 7) == 0){
-					live_flag = 0;
-					read_write->w->head = job_prepend(read_write->w->head, 2, r_buff);
-				} else if(strncmp(r_buff, "SIG", 3) == 0){
-					sig_flag = 0;
-					live_flag = 0;
-					input_flag = 0;
+			} else if(strncmp(r_buff, "SIG", 3) == 0){
+				sig_flag = 0;
+				live_flag = 0;
+				input_flag = 0;
 
-					printf(RED);
-						fprintf(stdout, "%s\n", "Lost Connection To Server.");
-					printf(RESET);
-
-					break;
-				} else if(strncmp(r_buff, "\0", 2) != 0){
-		
-					read_write->w->head = job_prepend(read_write->w->head, 1, r_buff);
-					
-				} 
-			pthread_mutex_unlock(&schedular_mutex);
+				printf(RED);
+					printf("%s\n", "Lost Connection To Server.");
+				printf(RESET);
+				break;
+			} else if(strncmp(r_buff, "\0", 2) != 0){
+				printf(CYAN);
+					fprintf(stdout, "%s\n", r_buff);
+				printf(RESET);
+			} 
 
 			bzero(r_buff, MAX);
-			//printf(RESET);
+			printf(RESET);
 	}
 
-	//bzero(r_buff, MAX);
+	bzero(r_buff, MAX);
 	printf("Closing Read Thread.\n");
 	pthread_exit(0);
 }
@@ -109,19 +109,19 @@ void* resolver_thread(void* struct_pass){
 
 	while(sig_flag){
 		if(read_write->w->head != NULL){	
-				pthread_mutex_lock(&schedular_mutex);
-					 if(read_write->w->head->job_id == 2){
-						printf(GREEN);
-					} else if(read_write->w->head->job_id == 3){
-						printf(RED);
-					} else {
-						printf(CYAN);
-					}
+			//	pthread_mutex_lock(&schedular_mutex);
+					// if(read_write->w->head->job_id == 2){
+					//	printf(GREEN);
+					//} else if(read_write->w->head->job_id == 3){
+					//	printf(RED);
+					//} else {
+					//	printf(CYAN);
+					//}
 		
 						printf("%s\n", read_write->w->head->data);
 						read_write->w->head = job_remove_front(read_write->w->head);
-					printf(RESET);
-				pthread_mutex_unlock(&schedular_mutex);
+					//printf(RESET);
+			//	pthread_mutex_unlock(&schedular_mutex);
 		} else {
 			//printf("%s\n", "poop");
 		}
@@ -143,14 +143,14 @@ void client_chat(int sockfd){
 
 	int n = 0, f;
 	
-	worker* new_worker = malloc(sizeof(worker));
-	new_worker->head = NULL;
+	//worker* new_worker = malloc(sizeof(worker));
+	//new_worker->head = NULL;
 
 	//----------------- READ THREAD ----------------------------
 	struct read_write_struct *read_write = malloc(sizeof(struct read_write_struct));
 
 	read_write->socket = sockfd;
-	read_write->w = new_worker;
+	//read_write->w = new_worker;
 
 	pthread_attr_t attr;
 	pthread_attr_init(&attr);
@@ -158,9 +158,9 @@ void client_chat(int sockfd){
 	//----------------- READ THREAD ----------------------------
 	
 	//----------------- RESOLVER THREAD ----------------------------
-	pthread_attr_t res_attr;
-	pthread_attr_init(&res_attr);
-	pthread_create(&resolver_tid, &res_attr, resolver_thread, read_write);
+	//pthread_attr_t res_attr;
+	//pthread_attr_init(&res_attr);
+	//pthread_create(&resolver_tid, &res_attr, resolver_thread, read_write);
 	//----------------- RESOLVER THREAD ----------------------------
 
 	char* argv[5];
@@ -168,29 +168,31 @@ void client_chat(int sockfd){
 	int args = 0;
 
 	while (sig_flag){
-		bzero(w_buff, MAX);
-		n = 0, f = 0, args = 0;;
-	
-		while (((w_buff[n++] = getchar()) != '\n') != 0 && sig_flag && n <= MAX - 1){}
+			printf(YELLOW);
+			bzero(w_buff, MAX);
+			n = 0, f = 0, args = 0;;
 		
-		strcpy(parse_string, w_buff);
+			while (((w_buff[n++] = getchar()) != '\n') != 0 && sig_flag && n <= MAX - 1){}
+			
+			strcpy(parse_string, w_buff);
 
-		args = parse_input(parse_string, " ", argv);
+			args = parse_input(parse_string, " ", argv);
 
-		//not needed but nice
-		if(args > 2){ if(strlen(argv[2]) > 1024){printf("MAX exceeded.\n");}}
-	
-		string_remove_nonalpha(argv[0]);
-
-		if ((strncmp(argv[0], "BYE", 3)) == 0){
-			break;
-		} else if ((strncmp(argv[0], "LIVEFEED", 8)) == 0 && !live_flag){
-			live_flag = 1;
-		} 
+			//not needed but nice
+			if(args > 2){ if(strlen(argv[2]) > 1024){printf("MAX exceeded.\n");}}
 		
-		write(sockfd, w_buff, sizeof(w_buff));
+			string_remove_nonalpha(argv[0]);
 
-		bzero(w_buff, MAX);
+			if ((strncmp(argv[0], "BYE", 3)) == 0){
+				break;
+			} else if ((strncmp(argv[0], "LIVEFEED", 8)) == 0 && !live_flag){
+				live_flag = 1;
+			} 
+			
+			write(sockfd, w_buff, sizeof(w_buff));
+
+			bzero(w_buff, MAX);
+			printf(RESET);
 	}
 	
 	read_flag = 0;
@@ -201,14 +203,14 @@ void client_chat(int sockfd){
 	pthread_join(read_tid, NULL);
 
 	printf("Threads %lu closing.\n", read_tid);
-	pthread_join(resolver_tid, NULL);
+//	pthread_join(resolver_tid, NULL);
 
 	free(read_write);
-	free(new_worker);
+	//free(new_worker);
 
 	strcpy(w_buff, "BYE\n");
 	write(sockfd, w_buff, sizeof(w_buff));
-	pthread_mutex_destroy(&schedular_mutex);
+	//pthread_mutex_destroy(&schedular_mutex);
 	client_exit();
 
 

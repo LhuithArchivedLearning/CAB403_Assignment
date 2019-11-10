@@ -360,7 +360,9 @@ void* livefeed_thread(void* struct_pass){
 
 			if(cursor != NULL){ 
 				pthread_mutex_lock(&schedular_mutex);
-					read_write->w->head = job_prepend(read_write->w->head, 1, "exiting livefeed.");
+					char m[MAX] = "";
+					strcpy(m, "exiting livefeed.");
+					read_write->w->head = job_prepend(read_write->w->head, 1, m);
 					cursor = NULL;
 				pthread_mutex_unlock(&schedular_mutex);
 			}
@@ -730,7 +732,6 @@ void server_chat(int sockfd, int c) {
 			if(live_flag){
 				live = 0;
 				live_flag = 0;
-				//add_to_queue(new_worker, "Stopping Livefeed.");
 			} else {
 				add_to_queue(new_worker, "Livefeed not active.");
 			}
