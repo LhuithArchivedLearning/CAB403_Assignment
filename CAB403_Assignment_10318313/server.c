@@ -708,7 +708,7 @@ void server_chat(int sockfd, int c) {
 				} else {
 					//1024 - 1 for \0 terminator
 					if(strlen(argv[2]) > 1024){
-						add_to_queue(new_worker, "Message Limit Exceeded 0 - 1023");
+						add_to_queue(new_worker, "Message Limit Exceeded (0 to 1023) + \\0");
 					} else {
 						send_to(new_client, new_worker, channel_id, argv[2]);
 					}
