@@ -303,11 +303,9 @@ void* livefeed_thread(void* struct_pass){
 								pthread_mutex_lock(&p_mutex);
 									sem_wait(&cur_channel->mutex);
 										strcat(m, cur_channel->posts[cursor->read_index++].message);
-
 										pthread_mutex_lock(&schedular_mutex);
 											read_write->w->head = job_prepend(read_write->w->head, 1, m);
 										pthread_mutex_unlock(&schedular_mutex);		
-
 									sem_post(&cur_channel->mutex);
 								pthread_mutex_unlock(&p_mutex);
 
@@ -341,12 +339,12 @@ void* livefeed_thread(void* struct_pass){
 							pthread_mutex_lock(&p_mutex);
 								sem_wait(&cur_channel->mutex);
 									strcat(m, cur_channel->posts[cursor->read_index++].message);
+									pthread_mutex_lock(&schedular_mutex);
+										read_write->w->head = job_prepend(read_write->w->head, 1, m);
+									pthread_mutex_unlock(&schedular_mutex);
 								sem_post(&cur_channel->mutex);
 							pthread_mutex_unlock(&p_mutex);
 
-							pthread_mutex_lock(&schedular_mutex);
-								read_write->w->head = job_prepend(read_write->w->head, 1, m);
-							pthread_mutex_unlock(&schedular_mutex);
 						} else {			
 						}	
 					} else {
@@ -363,7 +361,7 @@ void* livefeed_thread(void* struct_pass){
 
 			if(cursor != NULL){ 
 				pthread_mutex_lock(&schedular_mutex);
-					read_write->w->head = job_prepend(read_write->w->head, 1, "exiting livefeed\0");
+					read_write->w->head = job_prepend(read_write->w->head, 1, "exiting livefeed.");
 					cursor = NULL;
 				pthread_mutex_unlock(&schedular_mutex);
 			}
@@ -405,7 +403,14 @@ void* next_thread(void* struct_pass){
 					
 
 					while(1){
-						if(cursor == NULL){strcpy(m, "no new message."); break;}
+						if(cursor == NULL){
+							
+							pthread_mutex_lock(&schedular_mutex);
+								read_write->w->head = job_prepend(read_write->w->head, 1, "No New Messages");
+							pthread_mutex_unlock(&schedular_mutex);
+
+							 break;
+							 }
 
 						channel *cur_channel = &read_write->memptr->channels[cursor->channel_id];
 
@@ -417,6 +422,11 @@ void* next_thread(void* struct_pass){
 							pthread_mutex_lock(&p_mutex);
 								sem_wait(&cur_channel->mutex);
 									strcat(m, cur_channel->posts[cursor->read_index++].message);
+
+									pthread_mutex_lock(&schedular_mutex);
+										read_write->w->head = job_prepend(read_write->w->head, 1, m);
+									pthread_mutex_unlock(&schedular_mutex);
+
 								sem_post(&cur_channel->mutex);
 							pthread_mutex_unlock(&p_mutex);
 							
@@ -445,15 +455,21 @@ void* next_thread(void* struct_pass){
 						pthread_mutex_lock(&p_mutex);
 							sem_wait(&cur_channel->mutex);
 								strcat(m, cur_channel->posts[cursor->read_index++].message);
+
+								pthread_mutex_lock(&schedular_mutex);
+									read_write->w->head = job_prepend(read_write->w->head, 1, m);
+								pthread_mutex_unlock(&schedular_mutex);
+
 							sem_post(&cur_channel->mutex);
 						pthread_mutex_unlock(&p_mutex);
 					} else {
-						strcpy(m, "no new message.");
+						pthread_mutex_lock(&schedular_mutex);
+							read_write->w->head = job_prepend(read_write->w->head, 1, "No New Messages");
+						pthread_mutex_unlock(&schedular_mutex);
 					}
 				}
-
 			}
-			read_write->w->head = job_prepend(read_write->w->head, 1, m);
+			//read_write->w->head = job_prepend(read_write->w->head, 1, m);
 
 			*read_write->next_flag_ptr = 0;
 			cursor = NULL;
