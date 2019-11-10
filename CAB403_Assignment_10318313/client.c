@@ -84,9 +84,10 @@ void* read_thread(void* struct_pass){
 
 				printf(RED);
 					printf("%s\n", "Lost Connection To Server.");
+					fflush(stdin);
+					fflush(stdout);
+					fprintf(stdin, "%c", "\n\n\n");
 				printf(RESET);
-				fflush(stdout);
-
 				break;
 			} else if(strncmp(r_buff, "\0", 2) != 0){
 				printf(CYAN);
@@ -167,7 +168,7 @@ void client_chat(int sockfd){
 	strcpy(w_buff, "BYE\n");
 	write(sockfd, w_buff, sizeof(w_buff));
 	bzero(w_buff, MAX);
-	
+
 	client_exit();
 }
 
