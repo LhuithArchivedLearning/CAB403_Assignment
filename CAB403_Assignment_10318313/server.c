@@ -129,8 +129,6 @@ void subscribe(client* c, worker* w, int id){
 
 		//Passing Subbing information 
 		//-------------------------------------
-
-
 		sub_tmp = search(c->head, id);
 
 		if(sub_tmp != NULL){
@@ -709,8 +707,8 @@ void server_chat(int sockfd, int c) {
 					wrong_values(new_worker);
 				} else {
 					//1024 - 1 for \0 terminator
-					if(strlen(argv[2]) > 1023){
-						add_to_queue(new_worker, "Message Limit Exceeded");
+					if(strlen(argv[2]) > 1024){
+						add_to_queue(new_worker, "Message Limit Exceeded 0 - 1023");
 					} else {
 						send_to(new_client, new_worker, channel_id, argv[2]);
 					}
