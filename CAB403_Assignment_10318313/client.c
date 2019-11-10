@@ -60,7 +60,7 @@ struct read_write_struct{
 
 void* read_thread(void* struct_pass){
 	
-	struct read_write_struct *read_write = (struct read_write_struct*) struct_pass;
+struct read_write_struct *read_write = (struct read_write_struct*) struct_pass;
 
 	char r_buff[MAX];
 
@@ -98,7 +98,7 @@ void* read_thread(void* struct_pass){
 			printf(RESET);
 	}
 
-	bzero(r_buff, MAX);
+	//bzero(r_buff, MAX);
 	printf("Closing Read Thread.\n");
 	pthread_exit(0);
 }
@@ -168,11 +168,13 @@ void client_chat(int sockfd){
 	int args = 0;
 
 	while (sig_flag){
-			printf(YELLOW);
+	
 			bzero(w_buff, MAX);
-			n = 0, f = 0, args = 0;;
-		
-			while (((w_buff[n++] = getchar()) != '\n') != 0 && sig_flag && n <= MAX - 1){}
+			n = 0, f = 0, args = 0;
+
+			printf(RESET);
+				while (((w_buff[n++] = getchar()) != '\n') != 0 && sig_flag && n <= MAX - 1){}
+			printf(RESET);
 			
 			strcpy(parse_string, w_buff);
 
@@ -192,7 +194,7 @@ void client_chat(int sockfd){
 			write(sockfd, w_buff, sizeof(w_buff));
 
 			bzero(w_buff, MAX);
-			printf(RESET);
+
 	}
 	
 	read_flag = 0;
