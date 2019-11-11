@@ -51,7 +51,8 @@ volatile sig_atomic_t sig_flag = 1;
 volatile sig_atomic_t thread_flag = 1;
 volatile sig_atomic_t live_flag = 0;
 volatile sig_atomic_t live = 0;
-
+volatile sig_atomic_t live_id = 0;
+volatile sig_atomic_t next_id = 0;
 volatile sig_atomic_t next_flag = 0;
 
 pthread_mutex_t thread_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -62,8 +63,8 @@ struct read_write_struct{
 	client *c;
 	worker *w;
 	struct memory* memptr;
-	int live_id;
-	int next_id;
+	volatile sig_atomic_t *live_id;
+	volatile sig_atomic_t *next_id;
 	int socket;
 
 	
@@ -163,8 +164,13 @@ void unsubscribe(client* c, worker* w, int id){
 
 		subbed_channel* checker = c->head;
 
-		if(c->head->next == NULL){
-			if(live_flag){
+		//if there are no channels stop livefeed 
+
+		if(live_flag) {
+			if(c->head->next == NULL){
+				live_flag = 0;
+				live = 0;
+			} else if (id == live_id){
 				live_flag = 0;
 				live = 0;
 			}
@@ -176,6 +182,7 @@ void unsubscribe(client* c, worker* w, int id){
 		cancat_int(m, id);
 		strcat(m, ".");
 		add_to_queue(w, m);
+		id = -1;
 	}
 }
 
@@ -295,7 +302,7 @@ void* livefeed_thread(void* struct_pass){
 				//sleep(1);
 
 				//meat and potatoes
-				if(read_write->live_id == -1){
+				if(*read_write->live_id == -1){
 					//---------------------------------------- READING ALL ---------------------------
 					if(cursor != NULL && read_write->c->head != NULL){
 							channel *cur_channel = &read_write->memptr->channels[cursor->channel_id];
@@ -332,27 +339,31 @@ void* livefeed_thread(void* struct_pass){
 				} else {
 					//---------------------------------------- READING CHANNEL ---------------------------
 					if(cursor != NULL && read_write->c->head != NULL){
-						channel *cur_channel = &memptr->channels[read_write->live_id];
+						channel *cur_channel = &memptr->channels[*read_write->live_id];
 						
-						cursor = search(read_write->c->head, read_write->live_id);
+						cursor = search(read_write->c->head, *read_write->live_id);
 
-						if(cursor->read_index < cur_channel->post_index){
-							memset(m, 0, sizeof(m)); //clear message buffer
-							cancat_int(m, read_write->live_id);
-							strcat(m, ":");
+						if(cursor != NULL){
+							if(cursor->read_index < cur_channel->post_index){
+								memset(m, 0, sizeof(m)); //clear message buffer
+								cancat_int(m, *read_write->live_id);
+								strcat(m, ":");
 
-							pthread_mutex_lock(&thread_mutex);
-								sem_wait(&cur_channel->mutex);
-									strcat(m, cur_channel->posts[cursor->read_index++].message);
-									pthread_mutex_lock(&schedular_mutex);
-										read_write->w->head = job_prepend(read_write->w->head, 1, m);
-									pthread_mutex_unlock(&schedular_mutex);
-								sem_post(&cur_channel->mutex);
-							pthread_mutex_unlock(&thread_mutex);
-
-						} else {			
-						}	
+								pthread_mutex_lock(&thread_mutex);
+									sem_wait(&cur_channel->mutex);
+										strcat(m, cur_channel->posts[cursor->read_index++].message);
+										pthread_mutex_lock(&schedular_mutex);
+											read_write->w->head = job_prepend(read_write->w->head, 1, m);
+										pthread_mutex_unlock(&schedular_mutex);
+									sem_post(&cur_channel->mutex);
+								pthread_mutex_unlock(&thread_mutex);
+							} else {			
+							}	
+						} else {
+							*read_write->live_id = -1;
+						}
 					} else {
+						*read_write->live_id = -1;
 						no_subscription(read_write->w);
 						break;
 						
@@ -367,7 +378,7 @@ void* livefeed_thread(void* struct_pass){
 			if(cursor != NULL){ 
 				pthread_mutex_lock(&schedular_mutex);
 					char m[MAX] = "";
-					strcpy(m, "exiting livefeed.");
+					strcpy(m, "Exiting Livefeed.");
 					read_write->w->head = job_prepend(read_write->w->head, 1, m);
 					cursor = NULL;
 				pthread_mutex_unlock(&schedular_mutex);
@@ -402,7 +413,7 @@ void* next_thread(void* struct_pass){
 			printf("NEXTING\n");
 			
 
-			if(read_write->next_id == -1){
+			if(*read_write->next_id == -1){
 				
 				if(read_write->c->head == NULL){
 					printf("Cursor is null :(\n");
@@ -448,12 +459,12 @@ void* next_thread(void* struct_pass){
 
 			} else {
 				
-				cursor = search(read_write->c->head, read_write->next_id);
+				cursor = search(read_write->c->head, *read_write->next_id);
 
 				if(cursor == NULL){
 					strcpy(m, "No Channels");
 				} else {
-					channel *cur_channel = &read_write->memptr->channels[read_write->next_id];
+					channel *cur_channel = &read_write->memptr->channels[*read_write->next_id];
 
 					if(cursor->read_index < cur_channel->post_index){
 						memset(m, 0, sizeof(m)); //clear message buffer
@@ -529,6 +540,8 @@ void server_chat(int sockfd, int c) {
 	read_write->live_ptr = &live;
 	read_write->next_flag_ptr = &next_flag;	
 	read_write->thread_flag_ptr = &thread_flag;
+	read_write->live_id = &live_id;
+	read_write->next_id = &next_id;
 
 	pthread_attr_t live_attr;
 	pthread_attr_init(&live_attr);
@@ -560,6 +573,7 @@ void server_chat(int sockfd, int c) {
 			live = 0;
 			next_flag = 0;
 			sig_flag = 0;
+			live_id = -1;
 			printf("Connection lost, rude client close :(.\n");
 			break;
 		} 
@@ -638,7 +652,7 @@ void server_chat(int sockfd, int c) {
 				no_subscription(new_worker);
 			} else {
 			
-				read_write->next_id = channel_id;
+				next_id = channel_id;
 				
 				if(channel_id == -1){
 					//Next all
@@ -669,10 +683,11 @@ void server_chat(int sockfd, int c) {
 				if(new_client->head == NULL){
 					live = 0;
 					live_flag = 0;
+					live_id = -1;
 					no_subscription(new_worker);
 				} else {
 							
-					read_write->live_id = channel_id;
+					live_id = channel_id;
 
 					if(channel_id == -1){
 						
@@ -687,6 +702,7 @@ void server_chat(int sockfd, int c) {
 							if(cursor == NULL){
 								live = 0;
 								live_flag = 0;
+								live_id = -1;
 								not_subbed(new_worker, channel_id);
 							} else {
 								live_flag = 1;
@@ -738,6 +754,7 @@ void server_chat(int sockfd, int c) {
 			if(live_flag){
 				live = 0;
 				live_flag = 0;
+				live_id = -1;
 			} else {
 				add_to_queue(new_worker, "Livefeed not active.");
 			}
@@ -745,6 +762,7 @@ void server_chat(int sockfd, int c) {
 			if(live_flag) {
 				live_flag = 0; 
 				live = 0;
+				live_id = -1;
 				//add_to_queue(new_worker, "Stopping Livefeed.");
 			} else {
 				printf("Stopping here?");
@@ -759,7 +777,7 @@ void server_chat(int sockfd, int c) {
 	live_flag = 0; 
 	live = 0;
 	next_flag = 0;
-
+	
 
 	bzero(read_buff, MAX);
 
