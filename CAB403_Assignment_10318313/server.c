@@ -54,7 +54,7 @@ volatile sig_atomic_t live = 0;
 
 volatile sig_atomic_t next_flag = 0;
 
-pthread_mutex_t p_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t thread_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t schedular_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 
@@ -191,11 +191,11 @@ void send_to(client* c, worker* w, int id, char* arg){
 
 			remove_substring(arg, "\n");
 
-			pthread_mutex_lock(&p_mutex);
+			pthread_mutex_lock(&thread_mutex);
 				sem_wait(&cur_channel->mutex);
 					strcpy(cur_channel->posts[cur_channel->post_index++].message, arg);
 				sem_post(&cur_channel->mutex);
-			pthread_mutex_unlock(&p_mutex);
+			pthread_mutex_unlock(&thread_mutex);
 
 			//add_to_queue(w, "SENT");
 		}			
@@ -305,14 +305,14 @@ void* livefeed_thread(void* struct_pass){
 								cancat_int(m, cursor->channel_id);
 								strcat(m, ":");
 
-								pthread_mutex_lock(&p_mutex);
+								pthread_mutex_lock(&thread_mutex);
 									sem_wait(&cur_channel->mutex);
 										strcat(m, cur_channel->posts[cursor->read_index++].message);
 										pthread_mutex_lock(&schedular_mutex);
 											read_write->w->head = job_prepend(read_write->w->head, 1, m);
 										pthread_mutex_unlock(&schedular_mutex);		
 									sem_post(&cur_channel->mutex);
-								pthread_mutex_unlock(&p_mutex);
+								pthread_mutex_unlock(&thread_mutex);
 
 	
 							} else {
@@ -341,14 +341,14 @@ void* livefeed_thread(void* struct_pass){
 							cancat_int(m, read_write->live_id);
 							strcat(m, ":");
 
-							pthread_mutex_lock(&p_mutex);
+							pthread_mutex_lock(&thread_mutex);
 								sem_wait(&cur_channel->mutex);
 									strcat(m, cur_channel->posts[cursor->read_index++].message);
 									pthread_mutex_lock(&schedular_mutex);
 										read_write->w->head = job_prepend(read_write->w->head, 1, m);
 									pthread_mutex_unlock(&schedular_mutex);
 								sem_post(&cur_channel->mutex);
-							pthread_mutex_unlock(&p_mutex);
+							pthread_mutex_unlock(&thread_mutex);
 
 						} else {			
 						}	
@@ -426,7 +426,7 @@ void* next_thread(void* struct_pass){
 							cancat_int(m, cursor->channel_id);
 							strcat(m, ":");
 							
-							pthread_mutex_lock(&p_mutex);
+							pthread_mutex_lock(&thread_mutex);
 								sem_wait(&cur_channel->mutex);
 									strcat(m, cur_channel->posts[cursor->read_index++].message);
 
@@ -435,7 +435,7 @@ void* next_thread(void* struct_pass){
 									pthread_mutex_unlock(&schedular_mutex);
 
 								sem_post(&cur_channel->mutex);
-							pthread_mutex_unlock(&p_mutex);
+							pthread_mutex_unlock(&thread_mutex);
 							
 							break;
 						} else {
@@ -459,7 +459,7 @@ void* next_thread(void* struct_pass){
 						memset(m, 0, sizeof(m)); //clear message buffer
 						cancat_int(m, cursor->channel_id);
 						strcat(m, ":");
-						pthread_mutex_lock(&p_mutex);
+						pthread_mutex_lock(&thread_mutex);
 							sem_wait(&cur_channel->mutex);
 								strcat(m, cur_channel->posts[cursor->read_index++].message);
 
@@ -468,7 +468,7 @@ void* next_thread(void* struct_pass){
 								pthread_mutex_unlock(&schedular_mutex);
 
 							sem_post(&cur_channel->mutex);
-						pthread_mutex_unlock(&p_mutex);
+						pthread_mutex_unlock(&thread_mutex);
 					} else {
 						pthread_mutex_lock(&schedular_mutex);
 							read_write->w->head = job_prepend(read_write->w->head, 1, "No New Messages");
@@ -782,7 +782,7 @@ void server_chat(int sockfd, int c) {
 
 
 	pthread_mutex_destroy(&schedular_mutex);
-	pthread_mutex_destroy(&p_mutex);
+	pthread_mutex_destroy(&thread_mutex);
 } 
 
 
@@ -866,9 +866,9 @@ int main(int argc, char *argv[]){
 			/* WELCOME MESSAGE */	
 			char message[255] = {"Welcome! Your Client ID is <"};
 
-			pthread_mutex_lock(&p_mutex);
+			pthread_mutex_lock(&thread_mutex);
 				memptr->num_clients++;
-			pthread_mutex_unlock(&p_mutex);
+			pthread_mutex_unlock(&thread_mutex);
 
 			int clientid = getpid();
 
@@ -882,12 +882,12 @@ int main(int argc, char *argv[]){
 			//chat with the client
 			server_chat(new_fd, clientid);
 			
-			pthread_mutex_lock(&p_mutex);
+			pthread_mutex_lock(&thread_mutex);
 				memptr->num_clients--;
-			pthread_mutex_unlock(&p_mutex);
+			pthread_mutex_unlock(&thread_mutex);
 
 			//removing pthread mutex
-			pthread_mutex_destroy(&p_mutex);
+			pthread_mutex_destroy(&thread_mutex);
 			printf("server: closing connection from %s\n", inet_ntoa(their_addr.sin_addr));
 
 			close(new_fd);

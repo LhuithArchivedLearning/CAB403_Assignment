@@ -86,7 +86,6 @@ void* read_thread(void* struct_pass){
 					printf("%s\n", "Lost Connection To Server.");
 					fflush(stdin);
 					fflush(stdout);
-					fprintf(stdin, "%c", "\n\n\n");
 				printf(RESET);
 				break;
 			} else if(strncmp(r_buff, "\0", 2) != 0){
